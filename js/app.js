@@ -232,6 +232,7 @@ function renderRecords() {
   const balanceEl = $('sum-balance');
   balanceEl.textContent = formatMoney(income - expense);
   balanceEl.className = 'summary-value ' + (income - expense < 0 ? 'expense' : '');
+  renderBackupReminder();
 
   const list = $('record-list');
   if (monthTx.length === 0) {
@@ -437,6 +438,7 @@ function renderAccounts() {
 /* ---------- 设置页（分类管理） ---------- */
 
 function renderSettings() {
+  renderBackupStatus();
   const usage = new Map();
   for (const t of data.transactions) {
     if (t.categoryId) usage.set(t.categoryId, (usage.get(t.categoryId) || 0) + 1);
@@ -453,6 +455,118 @@ function renderSettings() {
           <span class="chevron">›</span>
         </button>`).join('');
   }
+}
+
+/* ---------- 备份：导出 / 导入 ---------- */
+
+const BACKUP_REMIND_DAYS = 14;
+
+/** 距离上次备份过了几天；从没备份过返回 null */
+function daysSinceBackup() {
+  if (!data.lastBackupAt) return null;
+  return Math.floor((Date.now() - data.lastBackupAt) / 86400000);
+}
+
+function renderBackupStatus() {
+  const days = daysSinceBackup();
+  const el = $('backup-status');
+  if (days === null) {
+    el.textContent = '⚠️ 还从来没有备份过';
+  } else {
+    const d = new Date(data.lastBackupAt);
+    const when = days === 0 ? '今天' : `${days} 天前`;
+    el.textContent = `上次备份：${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日（${when}）`;
+  }
+  el.classList.toggle('overdue', days === null || days >= BACKUP_REMIND_DAYS);
+}
+
+/** 明细页顶部的备份提醒：有记录、并且很久没备份时显示 */
+function renderBackupReminder() {
+  const days = daysSinceBackup();
+  const show = data.transactions.length > 0 && (days === null || days >= BACKUP_REMIND_DAYS);
+  const el = $('backup-reminder');
+  el.hidden = !show;
+  if (show) {
+    el.textContent = days === null
+      ? '💾 你还没有备份过数据，点这里去备份 ›'
+      : `💾 已经 ${days} 天没备份了，点这里去备份 ›`;
+  }
+}
+
+function exportBackup() {
+  data.lastBackupAt = Date.now();
+  const backup = {
+    app: '记账本',
+    exportedAt: new Date().toISOString(),
+    data,
+  };
+  const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `记账本备份-${todayStr()}.json`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  saveData();
+  renderBackupStatus();
+  showToast('备份文件已下载 ✓ 在「下载」文件夹里');
+}
+
+/** 检查备份文件内容是否正确；正确返回数据，不正确抛出带说明的错误 */
+function validateBackup(obj) {
+  const d = obj && obj.data ? obj.data : obj;
+  const bad = (msg) => { throw new Error(msg); };
+  if (!d || typeof d !== 'object') bad('文件内容不对');
+  if (!Array.isArray(d.accounts) || !Array.isArray(d.categories) || !Array.isArray(d.transactions)) {
+    bad('这不是记账本的备份文件');
+  }
+  if (d.accounts.length === 0) bad('备份里没有账户');
+  for (const a of d.accounts) {
+    if (!a || typeof a.id !== 'string' || typeof a.name !== 'string' || !Number.isInteger(a.initialBalance)) {
+      bad('备份里的账户数据有问题');
+    }
+  }
+  for (const c of d.categories) {
+    if (!c || typeof c.id !== 'string' || typeof c.name !== 'string' || !['expense', 'income'].includes(c.type)) {
+      bad('备份里的分类数据有问题');
+    }
+  }
+  for (const t of d.transactions) {
+    if (!t || typeof t.id !== 'string'
+      || !['expense', 'income', 'transfer'].includes(t.type)
+      || !Number.isInteger(t.amount) || t.amount <= 0
+      || typeof t.date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(t.date)) {
+      bad('备份里的记录数据有问题');
+    }
+  }
+  return d;
+}
+
+function importBackupFile(file) {
+  const reader = new FileReader();
+  reader.onload = () => {
+    let imported;
+    try {
+      imported = validateBackup(JSON.parse(reader.result));
+    } catch (e) {
+      alert(`导入失败：${e instanceof SyntaxError ? '文件内容不是正确的备份格式' : e.message}。\n现在的数据没有任何改动。`);
+      return;
+    }
+    const message = `备份文件里有 ${imported.transactions.length} 条记录、${imported.accounts.length} 个账户。\n\n`
+      + `导入后，现在的 ${data.transactions.length} 条记录会被替换掉。\n确定要导入吗？`;
+    if (!confirm(message)) return;
+
+    // 导入前先把当前数据另存一份在浏览器里，以防万一
+    try { localStorage.setItem(`${STORAGE_KEY}-before-import`, JSON.stringify(data)); } catch (e) { /* 存不下就算了 */ }
+
+    data = imported;
+    if (saveData()) showToast(`导入成功 ✓ 共 ${data.transactions.length} 条记录`);
+    renderCurrentPage();
+  };
+  reader.onerror = () => alert('读取文件失败，请重试。');
+  reader.readAsText(file);
 }
 
 /* ---------- 通用编辑弹窗（账户、分类共用） ---------- */
@@ -615,6 +729,14 @@ function bindEvents() {
   });
 
   // 设置页
+  $('backup-reminder').addEventListener('click', () => showPage('settings'));
+  $('export-btn').addEventListener('click', exportBackup);
+  $('import-btn').addEventListener('click', () => $('import-file').click());
+  $('import-file').addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    e.target.value = ''; // 清空，这样同一个文件可以再选一次
+    if (file) importBackupFile(file);
+  });
   document.querySelectorAll('.add-cat-btn').forEach((btn) => {
     btn.addEventListener('click', () => editCategory(null, btn.dataset.type));
   });

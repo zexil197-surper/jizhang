@@ -279,6 +279,32 @@ button { cursor: pointer; }
 .section-title { font-size: 16px; margin: 20px 4px 8px; color: var(--text-2); }
 .section-title:first-child { margin-top: 8px; }
 
+/* ========== 备份 ========== */
+.backup-card {
+  background: var(--surface);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 16px;
+}
+.backup-card .action-row { margin: 12px 0 4px; }
+.backup-status { margin: 0; font-weight: 600; }
+.backup-status.overdue { color: var(--warn); }
+
+.backup-reminder {
+  display: block;
+  width: 100%;
+  min-height: 48px;
+  margin-bottom: 12px;
+  padding: 10px 14px;
+  border: 2px solid var(--warn);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--warn) 12%, var(--surface));
+  color: var(--text);
+  text-align: left;
+  font-size: 15px;
+}
+.backup-reminder[hidden] { display: none; }
+
 /* ========== 图标选择 ========== */
 .icon-grid {
   display: grid;
