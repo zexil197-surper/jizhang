@@ -30,6 +30,8 @@ function createDefaultData() {
     ],
     // type: 'expense' 支出 | 'income' 收入 | 'transfer' 转账（accountId 转出 → toAccountId 转入）
     transactions: [],
+    // 每月预算：{ 分类id: 金额（分） }，每个月都一样
+    budgets: {},
   };
 }
 
@@ -158,12 +160,13 @@ function accountBalances() {
 const $ = (id) => document.getElementById(id);
 
 let toastTimer = null;
-function showToast(message) {
+/** 底部小提示。level 为 'warn'（黄）或 'over'（红）时更醒目、显示更久 */
+function showToast(message, level = '') {
   const el = $('toast');
   el.textContent = message;
-  el.classList.add('show');
+  el.className = `toast show ${level}`;
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => el.classList.remove('show'), 2200);
+  toastTimer = setTimeout(() => el.classList.remove('show'), level ? 4500 : 2200);
 }
 
 function openModal(id) {
@@ -182,7 +185,7 @@ let data = loadData();
 let viewMonth = currentMonthStr();
 let currentPage = 'records';
 
-const PAGE_TITLES = { records: '记账本', accounts: '我的账户', settings: '设置' };
+const PAGE_TITLES = { records: '记账本', budget: '每月预算', accounts: '我的账户', settings: '设置' };
 
 // 正在填写的记账表单
 const form = {
@@ -207,8 +210,10 @@ function showPage(page) {
 
 function renderCurrentPage() {
   if (currentPage === 'records') renderRecords();
+  else if (currentPage === 'budget') renderBudget();
   else if (currentPage === 'accounts') renderAccounts();
   else if (currentPage === 'settings') renderSettings();
+  renderBudgetDot();
 }
 
 /* ---------- 明细页 ---------- */
@@ -233,6 +238,7 @@ function renderRecords() {
   balanceEl.textContent = formatMoney(income - expense);
   balanceEl.className = 'summary-value ' + (income - expense < 0 ? 'expense' : '');
   renderBackupReminder();
+  renderBudgetAlert();
 
   const list = $('record-list');
   if (monthTx.length === 0) {
@@ -385,6 +391,8 @@ function submitRecordForm(event) {
     date,
     note,
   };
+  const month = date.slice(0, 7);
+  const levelBefore = isTransfer ? null : budgetInfo(form.categoryId, month);
   if (form.editingId) {
     const tx = data.transactions.find((t) => t.id === form.editingId);
     Object.assign(tx, fields);
@@ -393,8 +401,11 @@ function submitRecordForm(event) {
   }
   if (!isTransfer) data.lastAccountId = form.accountId;
 
-  if (saveData()) showToast(form.editingId ? '已修改 ✓' : (isTransfer ? '已转账 ✓' : '已记一笔 ✓'));
-  if (currentPage === 'records') viewMonth = date.slice(0, 7); // 跳到这条记录所在的月份
+  if (saveData()) {
+    showToast(form.editingId ? '已修改 ✓' : (isTransfer ? '已转账 ✓' : '已记一笔 ✓'));
+    if (form.type === 'expense') warnIfBudgetCrossed(form.categoryId, month, levelBefore);
+  }
+  if (currentPage === 'records') viewMonth = month; // 跳到这条记录所在的月份
   closeModal('record-modal');
   renderCurrentPage();
 }
@@ -541,6 +552,12 @@ function validateBackup(obj) {
       bad('备份里的记录数据有问题');
     }
   }
+  if (d.budgets !== undefined) {
+    if (!d.budgets || typeof d.budgets !== 'object' || Array.isArray(d.budgets)
+      || !Object.values(d.budgets).every((v) => Number.isInteger(v) && v > 0)) {
+      bad('备份里的预算数据有问题');
+    }
+  }
   return d;
 }
 
@@ -569,19 +586,195 @@ function importBackupFile(file) {
   reader.readAsText(file);
 }
 
-/* ---------- 通用编辑弹窗（账户、分类共用） ---------- */
+/* ---------- 预算页 ---------- */
 
-let editor = null; // { onSave, onDelete, icon }
+/** 某个月每个分类花了多少（分） */
+function spentByCategory(month) {
+  const spent = new Map();
+  for (const t of data.transactions) {
+    if (t.type === 'expense' && t.date.startsWith(month)) {
+      spent.set(t.categoryId, (spent.get(t.categoryId) || 0) + t.amount);
+    }
+  }
+  return spent;
+}
+
+/** 根据已用和预算算出状态：ok 正常 / warn 用了 80% 以上 / over 超支 */
+function budgetLevel(spent, budget) {
+  if (spent > budget) return 'over';
+  if (spent >= budget * 0.8) return 'warn';
+  return 'ok';
+}
+
+const LEVEL_RANK = { ok: 0, warn: 1, over: 2 };
+
+/** 某分类某月的预算情况；没设预算返回 null */
+function budgetInfo(categoryId, month) {
+  const budget = (data.budgets || {})[categoryId];
+  if (!budget) return null;
+  const spent = spentByCategory(month).get(categoryId) || 0;
+  return { budget, spent, level: budgetLevel(spent, budget) };
+}
+
+/** 记账后，如果这个分类刚刚跨过 80% 或超支，弹出醒目提醒 */
+function warnIfBudgetCrossed(categoryId, month, before) {
+  const after = budgetInfo(categoryId, month);
+  if (!after || after.level === 'ok') return;
+  if (before && LEVEL_RANK[before.level] >= LEVEL_RANK[after.level]) return;
+  const cat = findCategory(categoryId);
+  const pct = Math.round((after.spent / after.budget) * 100);
+  if (after.level === 'over') {
+    showToast(`🚨 「${cat.name}」超支了！\n已花 ${formatMoney(after.spent)}，超出预算 ${formatMoney(after.spent - after.budget)}`, 'over');
+  } else {
+    showToast(`⚠️ 「${cat.name}」预算已用 ${pct}%\n只剩 ${formatMoney(after.budget - after.spent)} 了`, 'warn');
+  }
+}
+
+/** 某月所有设了预算的分类，按紧急程度排序 */
+function budgetRows(month) {
+  const spent = spentByCategory(month);
+  const budgets = data.budgets || {};
+  return data.categories
+    .filter((c) => c.type === 'expense' && budgets[c.id])
+    .map((c) => {
+      const s = spent.get(c.id) || 0;
+      return { cat: c, budget: budgets[c.id], spent: s, level: budgetLevel(s, budgets[c.id]) };
+    })
+    .sort((a, b) => (LEVEL_RANK[b.level] - LEVEL_RANK[a.level]) || (b.spent / b.budget - a.spent / a.budget));
+}
+
+function budgetStateText(row) {
+  if (row.level === 'over') return `🚨 超支 ${formatMoney(row.spent - row.budget)}`;
+  if (row.level === 'warn') return `⚠️ 剩 ${formatMoney(row.budget - row.spent)}`;
+  return `剩 ${formatMoney(row.budget - row.spent)}`;
+}
+
+function barHtml(spent, budget) {
+  const pct = Math.min(100, budget ? (spent / budget) * 100 : 0);
+  return `<div class="bar"><div class="bar-fill" style="width:${pct.toFixed(1)}%"></div></div>`;
+}
+
+function renderBudget() {
+  const [y, m] = viewMonth.split('-').map(Number);
+  $('b-month-label').textContent = `${y}年${m}月`;
+
+  const rows = budgetRows(viewMonth);
+  const spent = spentByCategory(viewMonth);
+
+  // 总览
+  if (rows.length) {
+    const totalBudget = rows.reduce((s, r) => s + r.budget, 0);
+    const totalSpent = rows.reduce((s, r) => s + r.spent, 0);
+    const level = budgetLevel(totalSpent, totalBudget);
+    const left = totalBudget - totalSpent;
+    $('budget-total').className = `budget-total lvl-${level}`;
+    $('budget-total').innerHTML = `
+      <div class="summary-label">${m}月预算${left >= 0 ? '还剩' : '已超出'}</div>
+      <div class="budget-total-top">
+        <span class="budget-total-left ${left < 0 ? 'expense' : ''}">${formatMoney(Math.abs(left))}</span>
+        <span class="budget-total-sub">已用 ${formatMoney(totalSpent)} / ${formatMoney(totalBudget)}</span>
+      </div>
+      ${barHtml(totalSpent, totalBudget)}`;
+  } else {
+    $('budget-total').innerHTML = '';
+  }
+
+  $('budget-list').innerHTML = rows.map((r) => `
+    <button class="record budget-row lvl-${r.level}" data-budget-cat="${r.cat.id}">
+      <span class="record-icon">${r.cat.icon}</span>
+      <span class="record-main">
+        <div class="record-cat">${escapeHtml(r.cat.name)}</div>
+        <div class="budget-nums">${formatMoney(r.spent)} / ${formatMoney(r.budget)} · ${Math.round((r.spent / r.budget) * 100)}%</div>
+        ${barHtml(r.spent, r.budget)}
+      </span>
+      <span class="budget-state">${budgetStateText(r)}</span>
+    </button>`).join('');
+  $('budget-empty-hint').hidden = rows.length > 0;
+
+  const budgets = data.budgets || {};
+  $('no-budget-list').innerHTML = data.categories
+    .filter((c) => c.type === 'expense' && !budgets[c.id])
+    .map((c) => `
+      <button class="record" data-budget-cat="${c.id}">
+        <span class="record-icon">${c.icon}</span>
+        <span class="record-main">
+          <div class="record-cat">${escapeHtml(c.name)}</div>
+          <div class="record-sub">本月已花 ${formatMoney(spent.get(c.id) || 0)}</div>
+        </span>
+        <span class="chevron chevron-text">设置 ›</span>
+      </button>`).join('');
+}
+
+/** 明细页顶部：本月有分类快超支或已超支时显示 */
+function renderBudgetAlert() {
+  const rows = budgetRows(viewMonth).filter((r) => r.level !== 'ok');
+  const el = $('budget-alert');
+  el.hidden = rows.length === 0;
+  if (!rows.length) return;
+  const over = rows.filter((r) => r.level === 'over');
+  const warn = rows.filter((r) => r.level === 'warn');
+  const lines = [];
+  if (over.length) lines.push(`🚨 已超支：${over.map((r) => escapeHtml(r.cat.name)).join('、')}`);
+  if (warn.length) lines.push(`⚠️ 快用完：${warn.map((r) => escapeHtml(r.cat.name)).join('、')}`);
+  el.innerHTML = `${lines.join('<br>')} <b>›</b>`;
+  el.classList.toggle('only-warn', over.length === 0);
+}
+
+/** 底部「预算」按钮上的小圆点：本月有超支显示红点，快用完显示黄点 */
+function renderBudgetDot() {
+  const rows = budgetRows(currentMonthStr());
+  const dot = $('budget-dot');
+  const hasOver = rows.some((r) => r.level === 'over');
+  const hasWarn = rows.some((r) => r.level === 'warn');
+  dot.hidden = !hasOver && !hasWarn;
+  dot.classList.toggle('warn', !hasOver && hasWarn);
+}
+
+function editBudget(category) {
+  const current = (data.budgets || {})[category.id];
+  const spent = spentByCategory(viewMonth).get(category.id) || 0;
+  const [, m] = viewMonth.split('-').map(Number);
+  openEditor({
+    title: `${category.icon} ${category.name} 的每月预算`,
+    withNameIcon: false,
+    extraHtml: `
+      <label class="amount-field">
+        <span class="currency">$</span>
+        <input id="e-budget" type="text" inputmode="decimal" placeholder="0.00" autocomplete="off"
+          value="${current ? (current / 100).toFixed(2) : ''}" aria-label="每月预算金额">
+      </label>
+      <p class="field-hint">${m}月已经花了 ${formatMoney(spent)}。<br>每个月都按这个金额计算，每月 1 号重新开始。</p>`,
+    deleteLabel: '取消预算',
+    onSave() {
+      const amount = parseAmount($('e-budget').value);
+      if (amount === null) return '请输入正确的金额，比如 500';
+      data.budgets = data.budgets || {};
+      data.budgets[category.id] = amount;
+      showToast('预算已设置 ✓');
+      return '';
+    },
+    onDelete: current ? () => {
+      delete data.budgets[category.id];
+      showToast('已取消这个分类的预算');
+      return '';
+    } : null,
+  });
+  setTimeout(() => $('e-budget').focus(), 50);
+}
+
+/* ---------- 通用编辑弹窗（账户、分类、预算共用） ---------- */
+
+let editor = null; // { onSave, onDelete, icon, withNameIcon }
 
 /**
  * 打开编辑弹窗。
- * fields: name（名称）、icon（图标）、可选 extraHtml（额外输入框）
+ * withNameIcon 为 true 时显示「名称」和「图标」；extraHtml 是额外的输入框。
  * onSave(values) 返回错误文字表示失败，返回空表示成功
  */
-function openEditor({ title, name, icon, extraHtml = '', onSave, onDelete }) {
-  editor = { onSave, onDelete, icon };
+function openEditor({ title, name = '', icon, withNameIcon = true, extraHtml = '', onSave, onDelete, deleteLabel = '删除' }) {
+  editor = { onSave, onDelete, icon, withNameIcon };
   $('edit-title').textContent = title;
-  $('edit-body').innerHTML = `
+  $('edit-body').innerHTML = (withNameIcon ? `
     <label class="field">
       <span class="field-label">名称</span>
       <input id="e-name" type="text" class="input" maxlength="12" value="${escapeHtml(name)}" placeholder="比如：外卖" autocomplete="off">
@@ -591,20 +784,23 @@ function openEditor({ title, name, icon, extraHtml = '', onSave, onDelete }) {
       <div class="icon-grid">${ICON_CHOICES.map((ic) =>
         `<button type="button" class="icon-choice ${ic === icon ? 'active' : ''}" data-icon="${ic}">${ic}</button>`).join('')}
       </div>
-    </div>
-    ${extraHtml}`;
+    </div>` : '') + extraHtml;
   $('edit-error').textContent = '';
   $('edit-delete').hidden = !onDelete;
+  $('edit-delete').textContent = deleteLabel;
   openModal('edit-modal');
-  if (!name) setTimeout(() => $('e-name').focus(), 50);
+  if (withNameIcon && !name) setTimeout(() => $('e-name').focus(), 50);
 }
 
 function submitEditor(event) {
   event.preventDefault();
-  const name = $('e-name').value.trim();
-  if (!name) {
-    $('edit-error').textContent = '请填写名称';
-    return;
+  let name = '';
+  if (editor.withNameIcon) {
+    name = $('e-name').value.trim();
+    if (!name) {
+      $('edit-error').textContent = '请填写名称';
+      return;
+    }
   }
   const error = editor.onSave({ name, icon: editor.icon });
   if (error) {
@@ -691,6 +887,7 @@ function editCategory(category, type) {
       if (data.categories.filter((c) => c.type === catType).length <= 1) return '每种类型至少要保留一个分类';
       if (!confirm(`确定删除分类「${category.name}」吗？`)) return false;
       data.categories = data.categories.filter((c) => c !== category);
+      if (data.budgets) delete data.budgets[category.id];
       showToast('分类已删除');
       return '';
     } : null,
@@ -719,6 +916,18 @@ function bindEvents() {
     const tx = data.transactions.find((t) => t.id === row.dataset.id);
     if (tx) openRecordForm(tx);
   });
+
+  // 预算页
+  $('b-prev-month').addEventListener('click', () => { viewMonth = shiftMonth(viewMonth, -1); renderBudget(); });
+  $('b-next-month').addEventListener('click', () => { viewMonth = shiftMonth(viewMonth, 1); renderBudget(); });
+  $('b-month-label').addEventListener('click', () => { viewMonth = currentMonthStr(); renderBudget(); });
+  for (const id of ['budget-list', 'no-budget-list']) {
+    $(id).addEventListener('click', (e) => {
+      const row = e.target.closest('[data-budget-cat]');
+      if (row) editBudget(findCategory(row.dataset.budgetCat));
+    });
+  }
+  $('budget-alert').addEventListener('click', () => showPage('budget'));
 
   // 账户页
   $('transfer-btn').addEventListener('click', () => openRecordForm(null, 'transfer'));
