@@ -510,24 +510,52 @@ function renderBackupReminder() {
   }
 }
 
-function exportBackup() {
+function markBackedUp() {
   data.lastBackupAt = Date.now();
+  saveData();
+  renderBackupStatus();
+  renderBackupReminder();
+}
+
+function exportBackup() {
+  const filename = `记账本备份-${todayStr()}.json`;
   const backup = {
     app: '记账本',
     exportedAt: new Date().toISOString(),
-    data,
+    data: { ...data, lastBackupAt: Date.now() },
   };
-  const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
+  const json = JSON.stringify(backup, null, 2);
+
+  // 手机上：打开系统的「分享」菜单，可以选「存储到文件」或隔空投送
+  const isTouch = window.matchMedia('(pointer: coarse)').matches;
+  const file = typeof File === 'function' ? new File([json], filename, { type: 'application/json' }) : null;
+  if (isTouch && file && navigator.canShare && navigator.canShare({ files: [file] })) {
+    navigator.share({ files: [file], title: filename })
+      .then(() => {
+        markBackedUp();
+        showToast('备份完成 ✓');
+      })
+      .catch((e) => {
+        if (e && e.name === 'AbortError') showToast('已取消，没有备份');
+        else downloadBackup(json, filename);
+      });
+    return;
+  }
+  downloadBackup(json, filename);
+}
+
+/** 电脑上：直接下载备份文件 */
+function downloadBackup(json, filename) {
+  const blob = new Blob([json], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `记账本备份-${todayStr()}.json`;
+  a.download = filename;
   document.body.appendChild(a);
   a.click();
   a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
-  saveData();
-  renderBackupStatus();
+  markBackedUp();
   showToast('备份文件已下载 ✓ 在「下载」文件夹里');
 }
 
@@ -1466,4 +1494,9 @@ function bindEvents() {
 
 bindEvents();
 showPage('records');
+
+// 放在网站上时，开启离线功能（双击本地文件打开时不需要）
+if ('serviceWorker' in navigator && location.protocol === 'https:') {
+  navigator.serviceWorker.register('sw.js').catch(() => { /* 不影响正常使用 */ });
+}
 if (!storageOk) showToast('⚠️ 浏览器禁止了本地存储，记录可能无法保存');

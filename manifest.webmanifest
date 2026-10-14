@@ -1,0 +1,16 @@
+{
+  "name": "记账本",
+  "short_name": "记账本",
+  "description": "个人记账理财：收支记录、每月预算、图表、存钱目标",
+  "lang": "zh-CN",
+  "start_url": "./记账.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f5f6f8",
+  "theme_color": "#2f6fed",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

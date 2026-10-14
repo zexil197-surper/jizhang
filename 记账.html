@@ -6,6 +6,14 @@
   <meta name="theme-color" content="#f5f6f8" media="(prefers-color-scheme: light)">
   <meta name="theme-color" content="#111418" media="(prefers-color-scheme: dark)">
   <title>记账本</title>
+  <!-- 手机「添加到主屏幕」后的名称和图标 -->
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" type="image/png" href="icons/favicon-32.png">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="记账本">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
@@ -129,7 +137,8 @@
         </div>
         <input type="file" id="import-file" accept=".json,application/json" hidden>
         <p class="field-hint">
-          「导出」会下载一个备份文件，请把它存到安全的地方（比如 iCloud 云盘）。<br>
+          「导出」会生成一个备份文件，请把它存到安全的地方（比如 iCloud 云盘）。
+          在 iPhone 上会弹出分享菜单，选「存储到"文件"」即可。<br>
           「导入」会用备份文件里的数据<b>替换</b>现在的全部数据，可用于恢复数据或换浏览器、换电脑。
         </p>
       </section>
