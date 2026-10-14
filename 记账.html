@@ -44,6 +44,33 @@
       <section id="record-list" class="record-list"></section>
     </main>
 
+    <!-- ===== 图表页 ===== -->
+    <main id="page-charts" class="page" hidden>
+      <div class="month-switch">
+        <button class="icon-btn" id="c-prev-month" aria-label="上个月">‹</button>
+        <button class="month-label" id="c-month-label" title="回到本月"></button>
+        <button class="icon-btn" id="c-next-month" aria-label="下个月">›</button>
+      </div>
+
+      <section class="chart-card">
+        <h2 class="chart-title" id="pie-title">支出构成</h2>
+        <div id="pie-area"></div>
+      </section>
+
+      <section class="chart-card">
+        <h2 class="chart-title">最近 6 个月收支</h2>
+        <div class="chart-legend">
+          <span><i class="swatch" style="background:var(--c-income)"></i>收入</span>
+          <span><i class="swatch" style="background:var(--c-expense)"></i>支出</span>
+        </div>
+        <div class="bar-chart" id="trend-chart"></div>
+        <details class="chart-table">
+          <summary>📋 查看具体数字</summary>
+          <div id="trend-table"></div>
+        </details>
+      </section>
+    </main>
+
     <!-- ===== 账户页 ===== -->
     <main id="page-accounts" class="page" hidden>
       <section class="net-card">
@@ -117,6 +144,7 @@
   <nav class="tabbar" aria-label="页面切换">
     <button class="tab" data-page="records"><span class="tab-icon">📋</span><span>明细</span></button>
     <button class="tab" data-page="budget"><span class="tab-icon">🎯</span><span>预算</span><span class="tab-dot" id="budget-dot" hidden></span></button>
+    <button class="tab" data-page="charts"><span class="tab-icon">📊</span><span>图表</span></button>
     <button class="tab" data-page="accounts"><span class="tab-icon">💳</span><span>账户</span></button>
   </nav>
 

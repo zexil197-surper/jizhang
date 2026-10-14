@@ -185,7 +185,7 @@ let data = loadData();
 let viewMonth = currentMonthStr();
 let currentPage = 'records';
 
-const PAGE_TITLES = { records: '记账本', budget: '每月预算', accounts: '我的账户', settings: '设置' };
+const PAGE_TITLES = { records: '记账本', budget: '每月预算', charts: '图表统计', accounts: '我的账户', settings: '设置' };
 
 // 正在填写的记账表单
 const form = {
@@ -211,6 +211,7 @@ function showPage(page) {
 function renderCurrentPage() {
   if (currentPage === 'records') renderRecords();
   else if (currentPage === 'budget') renderBudget();
+  else if (currentPage === 'charts') renderCharts();
   else if (currentPage === 'accounts') renderAccounts();
   else if (currentPage === 'settings') renderSettings();
   renderBudgetDot();
@@ -586,6 +587,227 @@ function importBackupFile(file) {
   reader.readAsText(file);
 }
 
+/* ---------- 图表页（自己画的 SVG 图，不用联网） ---------- */
+
+const SVG_NS = 'http://www.w3.org/2000/svg';
+const PIE_MAX_SLICES = 8; // 超过 8 类时，小的合并成「其余」
+
+function renderCharts() {
+  const [y, m] = viewMonth.split('-').map(Number);
+  $('c-month-label').textContent = `${y}年${m}月`;
+  $('pie-title').textContent = `${m}月支出构成`;
+  renderPie();
+  renderTrend();
+}
+
+/** 简短金额，用在坐标轴上：$1.2k、$500 */
+function formatMoneyShort(cents) {
+  const d = cents / 100;
+  if (d >= 1000) return `$${(d / 1000).toFixed(d >= 10000 ? 0 : 1).replace(/\.0$/, '')}k`;
+  return `$${Math.round(d)}`;
+}
+
+/* ----- 饼图：本月支出按分类 ----- */
+
+function pieSlices() {
+  const spent = spentByCategory(viewMonth);
+  // 按分类列表的顺序排，这样同一个分类每个月的位置和颜色尽量不变
+  let slices = data.categories
+    .filter((c) => c.type === 'expense' && spent.get(c.id) > 0)
+    .map((c) => ({ id: c.id, name: c.name, icon: c.icon, amount: spent.get(c.id) }));
+  // 分类被删掉的旧记录
+  const known = new Set(slices.map((s) => s.id));
+  let unknown = 0;
+  for (const [id, amt] of spent) if (!known.has(id)) unknown += amt;
+
+  if (slices.length > PIE_MAX_SLICES || (unknown && slices.length >= PIE_MAX_SLICES)) {
+    const keep = new Set([...slices].sort((a, b) => b.amount - a.amount)
+      .slice(0, PIE_MAX_SLICES - 1).map((s) => s.id));
+    unknown += slices.filter((s) => !keep.has(s.id)).reduce((s, x) => s + x.amount, 0);
+    slices = slices.filter((s) => keep.has(s.id));
+  }
+  slices.forEach((s, i) => { s.color = `var(--cat-${i + 1})`; });
+  if (unknown) slices.push({ id: '__other', name: '其余', icon: '…', amount: unknown, color: 'var(--cat-other)' });
+  return slices;
+}
+
+function arcPath(cx, cy, rOut, rIn, a0, a1) {
+  const pt = (r, a) => [cx + r * Math.sin(a), cy - r * Math.cos(a)];
+  const large = a1 - a0 > Math.PI ? 1 : 0;
+  const [x0, y0] = pt(rOut, a0);
+  const [x1, y1] = pt(rOut, a1);
+  const [x2, y2] = pt(rIn, a1);
+  const [x3, y3] = pt(rIn, a0);
+  return `M${x0},${y0} A${rOut},${rOut} 0 ${large} 1 ${x1},${y1} L${x2},${y2} A${rIn},${rIn} 0 ${large} 0 ${x3},${y3} Z`;
+}
+
+function renderPie() {
+  const area = $('pie-area');
+  const slices = pieSlices();
+  const total = slices.reduce((s, x) => s + x.amount, 0);
+  if (!total) {
+    area.innerHTML = '<p class="chart-empty">这个月还没有支出记录</p>';
+    return;
+  }
+
+  let angle = 0;
+  const paths = slices.map((s, i) => {
+    // 只有一类时画成完整圆环（两个半圆拼起来）
+    const sweep = (s.amount / total) * Math.PI * 2;
+    const d = slices.length === 1
+      ? arcPath(100, 100, 92, 58, 0, Math.PI) + arcPath(100, 100, 92, 58, Math.PI, Math.PI * 2 - 1e-6)
+      : arcPath(100, 100, 92, 58, angle, angle + sweep);
+    angle += sweep;
+    return `<path class="pie-slice" data-i="${i}" d="${d}" fill="${s.color}"><title>${escapeHtml(s.name)} ${formatMoney(s.amount)}</title></path>`;
+  }).join('');
+
+  const legendOrder = slices.map((s, i) => ({ ...s, i })).sort((a, b) => b.amount - a.amount);
+  area.innerHTML = `
+    <div class="pie-wrap">
+      <svg class="pie-svg" viewBox="0 0 200 200" role="img" aria-label="本月支出按分类的环形图">
+        ${paths}
+        <text class="pie-center-label" x="100" y="92" text-anchor="middle" id="pie-c-label">总支出</text>
+        <text class="pie-center-value" x="100" y="118" text-anchor="middle" id="pie-c-value">${formatMoney(total)}</text>
+      </svg>
+      <ul class="pie-legend">
+        ${legendOrder.map((s) => `
+          <li data-i="${s.i}">
+            <i class="swatch" style="background:${s.color}"></i>
+            <span class="lg-name">${s.icon} ${escapeHtml(s.name)}</span>
+            <span class="lg-amt">${formatMoney(s.amount)}</span>
+            <span class="lg-pct">${Math.round((s.amount / total) * 100)}%</span>
+          </li>`).join('')}
+      </ul>
+    </div>`;
+
+  // 鼠标移上去 / 手指点一下：突出这一类，中间显示它的金额；再点一下取消
+  let focused = null;
+  const setFocus = (i) => {
+    focused = i;
+    const svg = area.querySelector('.pie-svg');
+    svg.classList.toggle('has-focus', i !== null);
+    area.querySelectorAll('[data-i]').forEach((el) => el.classList.toggle('focus', i !== null && Number(el.dataset.i) === i));
+    const s = i === null ? null : slices[i];
+    $('pie-c-label').textContent = s ? `${s.name} · ${Math.round((s.amount / total) * 100)}%` : '总支出';
+    $('pie-c-value').textContent = formatMoney(s ? s.amount : total);
+  };
+  area.querySelectorAll('[data-i]').forEach((el) => {
+    const i = Number(el.dataset.i);
+    el.addEventListener('mouseenter', () => setFocus(i));
+    el.addEventListener('mouseleave', () => setFocus(null));
+    el.addEventListener('click', () => setFocus(focused === i ? null : i));
+  });
+}
+
+/* ----- 柱状图：最近 6 个月收入和支出 ----- */
+
+function trendData() {
+  const months = [];
+  for (let i = 5; i >= 0; i--) months.push(shiftMonth(viewMonth, -i));
+  const rows = months.map((month) => ({ month, income: 0, expense: 0 }));
+  const byMonth = new Map(rows.map((r) => [r.month, r]));
+  for (const t of data.transactions) {
+    const r = byMonth.get(t.date.slice(0, 7));
+    if (!r) continue;
+    if (t.type === 'income') r.income += t.amount;
+    else if (t.type === 'expense') r.expense += t.amount;
+  }
+  return rows;
+}
+
+/** 找一个好看的刻度间隔（1、2、5 × 10 的幂） */
+function niceStep(max, count) {
+  const raw = max / count;
+  const pow = 10 ** Math.floor(Math.log10(raw));
+  const n = raw / pow;
+  return (n <= 1 ? 1 : n <= 2 ? 2 : n <= 5 ? 5 : 10) * pow;
+}
+
+/** 顶部是 4px 圆角、底部贴着横线的柱子 */
+function barPath(x, yTop, w, yBase) {
+  const h = yBase - yTop;
+  if (h <= 0) return '';
+  const r = Math.min(4, w / 2, h);
+  return `M${x},${yBase} V${yTop + r} Q${x},${yTop} ${x + r},${yTop} H${x + w - r} Q${x + w},${yTop} ${x + w},${yTop + r} V${yBase} Z`;
+}
+
+function renderTrend() {
+  const rows = trendData();
+  const box = $('trend-chart');
+  const W = Math.max(280, box.clientWidth || 320);
+  const H = 220;
+  const pad = { top: 12, right: 4, bottom: 28, left: 48 };
+  const plotW = W - pad.left - pad.right;
+  const plotH = H - pad.top - pad.bottom;
+
+  const max = Math.max(...rows.map((r) => Math.max(r.income, r.expense)));
+  const step = max > 0 ? niceStep(max, 4) : 10000;
+  const top = max > 0 ? Math.ceil(max / step) * step : step * 4;
+  const yOf = (v) => pad.top + plotH - (v / top) * plotH;
+
+  let svg = '';
+  for (let v = 0; v <= top + 1; v += step) {
+    const y = yOf(v);
+    svg += `<line class="grid-line" x1="${pad.left}" x2="${W - pad.right}" y1="${y}" y2="${y}"/>`;
+    svg += `<text class="axis-label" x="${pad.left - 8}" y="${y + 4}" text-anchor="end">${formatMoneyShort(v)}</text>`;
+  }
+
+  const groupW = plotW / rows.length;
+  const barW = Math.min(28, (groupW - 16) / 2);
+  const baseY = yOf(0);
+  const thisMonth = currentMonthStr();
+  rows.forEach((r, i) => {
+    const cx = pad.left + groupW * i + groupW / 2;
+    // 收入在左、支出在右，中间留 2px 缝
+    svg += `<path d="${barPath(cx - barW - 1, yOf(r.income), barW, baseY)}" fill="var(--c-income)"/>`;
+    svg += `<path d="${barPath(cx + 1, yOf(r.expense), barW, baseY)}" fill="var(--c-expense)"/>`;
+    const m = Number(r.month.slice(5));
+    const cls = r.month === thisMonth ? 'axis-label current' : 'axis-label';
+    svg += `<text class="${cls}" x="${cx}" y="${H - 8}" text-anchor="middle">${m}月</text>`;
+    svg += `<rect class="hit" data-i="${i}" x="${pad.left + groupW * i}" y="${pad.top}" width="${groupW}" height="${plotH}" rx="6"/>`;
+  });
+
+  box.innerHTML = `<svg xmlns="${SVG_NS}" viewBox="0 0 ${W} ${H}" height="${H}" role="img" aria-label="最近 6 个月收入和支出柱状图">${svg}</svg>
+    <div class="chart-tooltip" hidden></div>`;
+
+  // 鼠标移上去 / 手指点一下某个月：显示这个月的具体数字
+  const tip = box.querySelector('.chart-tooltip');
+  let shown = null;
+  const show = (i) => {
+    shown = i;
+    box.querySelectorAll('.hit').forEach((h) => h.classList.toggle('focus', Number(h.dataset.i) === i));
+    if (i === null) { tip.hidden = true; return; }
+    const r = rows[i];
+    const [yy, mm] = r.month.split('-').map(Number);
+    const net = r.income - r.expense;
+    tip.innerHTML = `<b>${yy}年${mm}月</b>
+      <div class="row"><i class="swatch" style="background:var(--c-income)"></i>收入 ${formatMoney(r.income)}</div>
+      <div class="row"><i class="swatch" style="background:var(--c-expense)"></i>支出 ${formatMoney(r.expense)}</div>
+      <div class="row">结余 ${formatMoney(net)}</div>`;
+    tip.hidden = false;
+    const cx = pad.left + groupW * i + groupW / 2;
+    const left = Math.max(0, Math.min(W - tip.offsetWidth, cx - tip.offsetWidth / 2));
+    tip.style.left = `${left}px`;
+    tip.style.top = `${Math.max(0, pad.top - 4)}px`;
+  };
+  box.querySelectorAll('.hit').forEach((h) => {
+    const i = Number(h.dataset.i);
+    h.addEventListener('mouseenter', () => show(i));
+    h.addEventListener('mouseleave', () => show(null));
+    h.addEventListener('click', () => show(shown === i ? null : i));
+  });
+
+  // 数字表格
+  $('trend-table').innerHTML = `<table>
+    <thead><tr><th>月份</th><th>收入</th><th>支出</th><th>结余</th></tr></thead>
+    <tbody>${rows.slice().reverse().map((r) => {
+      const [yy, mm] = r.month.split('-').map(Number);
+      const net = r.income - r.expense;
+      return `<tr><td>${String(yy).slice(2)}年${mm}月</td><td>${formatMoney(r.income)}</td><td>${formatMoney(r.expense)}</td>
+        <td class="${net < 0 ? 'expense' : ''}">${formatMoney(net)}</td></tr>`;
+    }).join('')}</tbody></table>`;
+}
+
 /* ---------- 预算页 ---------- */
 
 /** 某个月每个分类花了多少（分） */
@@ -928,6 +1150,16 @@ function bindEvents() {
     });
   }
   $('budget-alert').addEventListener('click', () => showPage('budget'));
+
+  // 图表页
+  $('c-prev-month').addEventListener('click', () => { viewMonth = shiftMonth(viewMonth, -1); renderCharts(); });
+  $('c-next-month').addEventListener('click', () => { viewMonth = shiftMonth(viewMonth, 1); renderCharts(); });
+  $('c-month-label').addEventListener('click', () => { viewMonth = currentMonthStr(); renderCharts(); });
+  let resizeTimer = null;
+  window.addEventListener('resize', () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => { if (currentPage === 'charts') renderTrend(); }, 150);
+  });
 
   // 账户页
   $('transfer-btn').addEventListener('click', () => openRecordForm(null, 'transfer'));
