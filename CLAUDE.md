@@ -20,6 +20,9 @@
 底部导航：明细 · 预算 · 图表 · 存钱 · 账户；右上角 ⚙️ 是设置（备份、分类管理）。
 
 ## 手机版（iPhone，主要设备）
+- 网址：**https://zexil197-surper.github.io/jizhang/** （代码仓库：https://github.com/zexil197-surper/jizhang ，公开）
+- **发布更新的步骤**：改完代码 → 测试 → `sw.js` 的 `CACHE_NAME` 数字加 1 → git commit → `git push`（gh 装在 `~/.local/bin/gh`，已登录并设置好 git 凭据）→ 等 1~2 分钟 GitHub Pages 自动更新。推送前先告诉用户要更新什么。
+- git 作者邮箱用 GitHub 隐私邮箱（`342542108+zexil197-surper@users.noreply.github.com`），**不要把用户真实邮箱提交上去**。
 - 发布在 GitHub Pages（用户选的）。用户主要在 iPhone 上记账，从主屏幕图标打开（不在主屏幕的话 iOS 可能 7 天后清掉数据）。
 - `index.html` 只是跳转到 `记账.html`（保留 `记账.html` 这个名字，是为了不丢电脑上已有的数据）。
 - `manifest.webmanifest` + `icons/` = 主屏幕名称和图标；`sw.js` = 离线功能（只在 https 上启用）。
