@@ -11,7 +11,8 @@
 <body>
   <div class="app">
     <header class="topbar">
-      <h1 class="app-title">记账本</h1>
+      <h1 class="app-title" id="page-title">记账本</h1>
+      <button class="icon-btn" id="settings-btn" aria-label="设置" title="设置">⚙️</button>
     </header>
 
     <!-- ===== 明细页 ===== -->
@@ -40,10 +41,47 @@
       <section id="record-list" class="record-list"></section>
     </main>
 
+    <!-- ===== 账户页 ===== -->
+    <main id="page-accounts" class="page" hidden>
+      <section class="net-card">
+        <span class="summary-label">净资产（所有账户加起来）</span>
+        <span class="net-value" id="net-worth">$0.00</span>
+        <div class="net-sub">
+          <span>资产 <b id="total-assets">$0.00</b></span>
+          <span>负债 <b id="total-debts">$0.00</b></span>
+        </div>
+      </section>
+
+      <div class="action-row">
+        <button class="btn btn-secondary" id="transfer-btn">🔁 转账</button>
+        <button class="btn btn-secondary" id="add-account-btn">＋ 添加账户</button>
+      </div>
+
+      <div class="list-card" id="account-list"></div>
+      <p class="hint">点一下账户，可以修改名称、图标和初始余额。</p>
+    </main>
+
+    <!-- ===== 设置页 ===== -->
+    <main id="page-settings" class="page" hidden>
+      <h2 class="section-title">支出分类</h2>
+      <div class="list-card" id="cat-list-expense"></div>
+      <button class="btn btn-secondary btn-block add-cat-btn" data-type="expense">＋ 添加支出分类</button>
+
+      <h2 class="section-title">收入分类</h2>
+      <div class="list-card" id="cat-list-income"></div>
+      <button class="btn btn-secondary btn-block add-cat-btn" data-type="income">＋ 添加收入分类</button>
+    </main>
+
     <button class="fab" id="add-btn" aria-label="记一笔">
       <span class="fab-plus">＋</span><span class="fab-text">记一笔</span>
     </button>
   </div>
+
+  <!-- ===== 底部导航 ===== -->
+  <nav class="tabbar" aria-label="页面切换">
+    <button class="tab" data-page="records"><span class="tab-icon">📋</span><span>明细</span></button>
+    <button class="tab" data-page="accounts"><span class="tab-icon">💳</span><span>账户</span></button>
+  </nav>
 
   <!-- ===== 记一笔 / 编辑 弹窗 ===== -->
   <div class="modal-backdrop" id="record-modal" hidden>
@@ -53,9 +91,10 @@
         <button type="button" class="icon-btn" id="close-modal" aria-label="关闭">✕</button>
       </div>
 
-      <div class="segmented" role="tablist">
+      <div class="segmented three" role="tablist">
         <button type="button" class="seg-btn" data-type="expense">支出</button>
         <button type="button" class="seg-btn" data-type="income">收入</button>
+        <button type="button" class="seg-btn" data-type="transfer">转账</button>
       </div>
 
       <label class="amount-field">
@@ -63,22 +102,25 @@
         <input id="f-amount" type="text" inputmode="decimal" placeholder="0.00" autocomplete="off" aria-label="金额">
       </label>
 
-      <div class="field">
+      <div class="field" id="cat-field">
         <span class="field-label">分类</span>
         <div class="chip-grid" id="f-categories"></div>
       </div>
 
       <div class="field">
-        <span class="field-label">账户</span>
+        <span class="field-label" id="acc-label">账户</span>
         <div class="chip-row" id="f-accounts"></div>
       </div>
 
-      <div class="field-row">
-        <label class="field">
-          <span class="field-label">日期</span>
-          <input id="f-date" type="date" class="input">
-        </label>
+      <div class="field" id="to-field" hidden>
+        <span class="field-label">转入哪个账户</span>
+        <div class="chip-row" id="f-to-accounts"></div>
       </div>
+
+      <label class="field">
+        <span class="field-label">日期</span>
+        <input id="f-date" type="date" class="input">
+      </label>
 
       <label class="field">
         <span class="field-label">备注（可不填）</span>
@@ -89,6 +131,22 @@
 
       <div class="sheet-actions">
         <button type="button" class="btn btn-danger" id="delete-btn" hidden>删除</button>
+        <button type="submit" class="btn btn-primary">保存</button>
+      </div>
+    </form>
+  </div>
+
+  <!-- ===== 通用编辑弹窗（账户、分类） ===== -->
+  <div class="modal-backdrop" id="edit-modal" hidden>
+    <form class="sheet" id="edit-form" novalidate>
+      <div class="sheet-head">
+        <h2 id="edit-title"></h2>
+        <button type="button" class="icon-btn" id="edit-close" aria-label="关闭">✕</button>
+      </div>
+      <div id="edit-body"></div>
+      <p class="form-error" id="edit-error" role="alert"></p>
+      <div class="sheet-actions">
+        <button type="button" class="btn btn-danger" id="edit-delete" hidden>删除</button>
         <button type="submit" class="btn btn-primary">保存</button>
       </div>
     </form>

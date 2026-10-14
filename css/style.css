@@ -55,13 +55,17 @@ button { cursor: pointer; }
 .app {
   max-width: 720px;
   margin: 0 auto;
-  padding: 0 16px calc(110px + env(safe-area-inset-bottom));
+  padding: 0 16px calc(180px + env(safe-area-inset-bottom));
 }
 
 /* ========== 顶部 ========== */
 .topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   padding: calc(16px + env(safe-area-inset-top)) 0 8px;
 }
+.page[hidden] { display: none; }
 .app-title { margin: 0; font-size: 24px; font-weight: 700; }
 
 /* ========== 月份切换 ========== */
@@ -188,7 +192,7 @@ button { cursor: pointer; }
 .fab {
   position: fixed;
   right: max(16px, calc(50vw - 360px + 16px));
-  bottom: calc(20px + env(safe-area-inset-bottom));
+  bottom: calc(84px + env(safe-area-inset-bottom));
   height: 60px;
   padding: 0 24px;
   border: none;
@@ -204,7 +208,91 @@ button { cursor: pointer; }
   z-index: 10;
 }
 .fab:active { transform: scale(0.96); }
+.fab[hidden] { display: none; }
 .fab-plus { font-size: 24px; line-height: 1; }
+
+/* ========== 底部导航 ========== */
+.tabbar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  justify-content: center;
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  padding-bottom: env(safe-area-inset-bottom);
+  z-index: 20;
+}
+.tab {
+  flex: 1;
+  max-width: 160px;
+  min-height: 64px;
+  border: none;
+  background: transparent;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  color: var(--text-2);
+}
+.tab-icon { font-size: 24px; line-height: 1.1; filter: grayscale(1); opacity: 0.6; }
+.tab.active { color: var(--primary); font-weight: 700; }
+.tab.active .tab-icon { filter: none; opacity: 1; }
+
+/* ========== 账户页 ========== */
+.net-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  background: var(--surface);
+  border-radius: var(--radius);
+  padding: 20px 16px;
+  box-shadow: var(--shadow);
+  margin-top: 8px;
+}
+.net-value {
+  font-size: clamp(26px, 8vw, 36px);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+.net-sub { display: flex; gap: 20px; font-size: 14px; color: var(--text-2); }
+.net-sub b { color: var(--text); font-variant-numeric: tabular-nums; }
+
+.action-row { display: flex; gap: 10px; margin: 16px 0; }
+.btn-secondary { background: var(--surface); color: var(--text); box-shadow: var(--shadow); }
+.btn-block { display: block; width: 100%; margin-top: 10px; }
+
+.list-card {
+  background: var(--surface);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+.list-card:empty { display: none; }
+.balance-amount.negative { color: var(--expense); }
+.chevron { color: var(--text-2); font-size: 20px; margin-left: 4px; }
+
+.hint { font-size: 13px; color: var(--text-2); margin: 10px 4px; }
+
+.section-title { font-size: 16px; margin: 20px 4px 8px; color: var(--text-2); }
+.section-title:first-child { margin-top: 8px; }
+
+/* ========== 图标选择 ========== */
+.icon-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(48px, 1fr));
+  gap: 6px;
+}
+.icon-choice {
+  height: 48px;
+  border: 2px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  font-size: 24px;
+}
+.icon-choice.active { border-color: var(--primary); background: color-mix(in srgb, var(--primary) 12%, var(--surface)); }
 
 /* ========== 弹窗 ========== */
 .modal-backdrop {
@@ -264,6 +352,9 @@ button { cursor: pointer; }
 .seg-btn.active { background: var(--surface); color: var(--text); box-shadow: var(--shadow); }
 .seg-btn.active[data-type="expense"] { color: var(--expense); }
 .seg-btn.active[data-type="income"] { color: var(--income); }
+.segmented.three { grid-template-columns: 1fr 1fr 1fr; }
+.field[hidden] { display: none; }
+.field-hint { font-size: 13px; color: var(--text-2); margin: 6px 2px 0; }
 
 .amount-field {
   display: flex;
@@ -344,7 +435,7 @@ button { cursor: pointer; }
 .toast {
   position: fixed;
   left: 50%;
-  bottom: calc(96px + env(safe-area-inset-bottom));
+  bottom: calc(160px + env(safe-area-inset-bottom));
   transform: translateX(-50%) translateY(20px);
   background: var(--text);
   color: var(--bg);
