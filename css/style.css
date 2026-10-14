@@ -397,6 +397,17 @@ button { cursor: pointer; }
 }
 .toast.warn { background: #c27400; }
 .toast.over { background: #d93036; }
+.toast.done {
+  width: min(360px, calc(100vw - 32px));
+  border-radius: 16px;
+  padding: 16px 20px;
+  font-size: 17px;
+  font-weight: 700;
+  color: #fff;
+  background: #0f8a5f;
+  text-align: center;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+}
 
 /* ========== 图表 ========== */
 .chart-card {
@@ -470,6 +481,53 @@ button { cursor: pointer; }
 .chart-table th, .chart-table td { padding: 8px 4px; white-space: nowrap; text-align: right; border-bottom: 1px solid var(--border); }
 .chart-table th:first-child, .chart-table td:first-child { text-align: left; }
 .chart-table th { color: var(--text-2); font-weight: 600; }
+
+/* ========== 存钱目标 ========== */
+#goal-list { margin-top: 16px; }
+.goal-card {
+  background: var(--surface);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 16px;
+  margin-bottom: 16px;
+}
+.goal-head { display: flex; align-items: center; gap: 12px; }
+.goal-name { flex: 1; min-width: 0; font-size: 18px; font-weight: 700; }
+.goal-nums { display: flex; justify-content: space-between; align-items: baseline; margin-top: 12px; gap: 8px; }
+.goal-saved { font-size: clamp(20px, 6vw, 26px); font-weight: 800; }
+.goal-target { color: var(--text-2); font-size: 14px; font-variant-numeric: tabular-nums; }
+.goal-card .bar { height: 14px; margin-top: 8px; }
+.goal-card .bar-fill { background: var(--primary); }
+.goal-card.done .bar-fill { background: var(--income); }
+.goal-info { font-size: 14px; color: var(--text-2); margin: 8px 0 12px; }
+.goal-card.done .goal-info { color: var(--income); font-weight: 700; }
+.goal-info .late { color: var(--warn); }
+.goal-card .action-row { margin: 0; }
+.btn-plain { background: var(--surface-2); color: var(--text); }
+
+.goal-history { margin-top: 12px; }
+.goal-history summary { cursor: pointer; color: var(--primary); min-height: 44px; display: flex; align-items: center; }
+.history-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 48px;
+  border-top: 1px solid var(--border);
+  font-size: 14px;
+}
+.history-row .h-main { flex: 1; min-width: 0; }
+.history-row .h-date { color: var(--text-2); font-size: 13px; }
+.history-row .h-amt { font-weight: 700; font-variant-numeric: tabular-nums; }
+.history-row .h-del {
+  width: 40px;
+  height: 40px;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text-2);
+  font-size: 16px;
+}
+.history-row .h-del:hover { background: var(--surface-2); color: var(--expense); }
 
 /* ========== 图标选择 ========== */
 .icon-grid {
@@ -622,6 +680,7 @@ button { cursor: pointer; }
 .btn-primary { background: var(--primary); color: var(--primary-text); }
 .btn-danger { flex: 0 0 auto; padding: 0 22px; background: var(--surface-2); color: var(--expense); }
 .btn:active { transform: scale(0.98); }
+.btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
 
 /* ========== 小提示 ========== */
 .toast {

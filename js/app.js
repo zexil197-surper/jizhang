@@ -32,6 +32,8 @@ function createDefaultData() {
     transactions: [],
     // 每月预算：{ 分类id: 金额（分） }，每个月都一样
     budgets: {},
+    // 存钱目标：{ id, name, icon, target, deadline, deposits: [{ id, amount（正数存入/负数取出）, date, note }] }
+    goals: [],
   };
 }
 
@@ -40,7 +42,7 @@ const ICON_CHOICES = [
   '🍜', '🍔', '☕', '🍺', '🛒', '🛍️', '👕', '💄', '🚌', '🚗', '⛽', '🚕',
   '✈️', '🏠', '💡', '📱', '💻', '🎮', '🎬', '🎵', '📚', '🎓', '💊', '🏥',
   '🐶', '👶', '🎁', '💇', '🏋️', '🧾', '📦', '💼', '💰', '📈', '🧧', '↩️',
-  '💵', '🏦', '💳', '🪙', '👛', '🐷',
+  '💵', '🏦', '💳', '🪙', '👛', '🐷', '🎯', '🏖️', '💍', '🚀',
 ];
 
 /* ---------- 读取 / 保存 ---------- */
@@ -185,7 +187,9 @@ let data = loadData();
 let viewMonth = currentMonthStr();
 let currentPage = 'records';
 
-const PAGE_TITLES = { records: '记账本', budget: '每月预算', charts: '图表统计', accounts: '我的账户', settings: '设置' };
+const PAGE_TITLES = {
+  records: '记账本', budget: '每月预算', charts: '图表统计', goals: '存钱目标', accounts: '我的账户', settings: '设置',
+};
 
 // 正在填写的记账表单
 const form = {
@@ -212,6 +216,7 @@ function renderCurrentPage() {
   if (currentPage === 'records') renderRecords();
   else if (currentPage === 'budget') renderBudget();
   else if (currentPage === 'charts') renderCharts();
+  else if (currentPage === 'goals') renderGoals();
   else if (currentPage === 'accounts') renderAccounts();
   else if (currentPage === 'settings') renderSettings();
   renderBudgetDot();
@@ -559,6 +564,12 @@ function validateBackup(obj) {
       bad('备份里的预算数据有问题');
     }
   }
+  if (d.goals !== undefined) {
+    const okGoal = (g) => g && typeof g.id === 'string' && typeof g.name === 'string'
+      && Number.isInteger(g.target) && g.target > 0 && Array.isArray(g.deposits)
+      && g.deposits.every((x) => x && Number.isInteger(x.amount) && /^\d{4}-\d{2}-\d{2}$/.test(x.date));
+    if (!Array.isArray(d.goals) || !d.goals.every(okGoal)) bad('备份里的存钱目标数据有问题');
+  }
   return d;
 }
 
@@ -808,6 +819,193 @@ function renderTrend() {
     }).join('')}</tbody></table>`;
 }
 
+/* ---------- 存钱目标页 ---------- */
+
+function goalSaved(goal) {
+  return goal.deposits.reduce((s, d) => s + d.amount, 0);
+}
+
+/** 从今天到目标日期还剩几个月（不足一个月算 1 个月）；没设日期返回 null，已过期返回 0 */
+function monthsUntil(dateStr) {
+  if (!dateStr) return null;
+  if (dateStr < todayStr()) return 0;
+  const [y, m] = dateStr.split('-').map(Number);
+  const now = new Date();
+  return Math.max(1, (y - now.getFullYear()) * 12 + (m - 1 - now.getMonth()));
+}
+
+function formatDateCn(dateStr) {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  return `${y}年${m}月${d}日`;
+}
+
+function goalInfoHtml(goal, saved) {
+  if (saved >= goal.target) return '🎉 目标已达成！';
+  const left = goal.target - saved;
+  let text = `还差 ${formatMoney(left)}`;
+  const months = monthsUntil(goal.deadline);
+  if (months === 0) {
+    text += ` · <span class="late">已过目标日期（${formatDateCn(goal.deadline)}）</span>`;
+  } else if (months !== null) {
+    text += ` · 到 ${formatDateCn(goal.deadline)} 每月需存 <b>${formatMoney(Math.ceil(left / months))}</b>`;
+  }
+  return text;
+}
+
+function renderGoals() {
+  const goals = data.goals || [];
+  const totalSaved = goals.reduce((s, g) => s + goalSaved(g), 0);
+  const doneCount = goals.filter((g) => goalSaved(g) >= g.target).length;
+  $('goals-summary').innerHTML = goals.length ? `
+      <span class="summary-label">所有目标一共已存</span>
+      <span class="net-value">${formatMoney(totalSaved)}</span>
+      <div class="net-sub"><span>目标 <b>${goals.length}</b> 个</span><span>已完成 <b>${doneCount}</b> 个</span></div>`
+    : `<div class="empty-icon">🐷</div><span class="summary-label">还没有存钱目标，点下面按钮新建一个吧</span>`;
+
+  $('goal-list').innerHTML = goals.map((g) => {
+    const saved = goalSaved(g);
+    const done = saved >= g.target;
+    const pct = Math.round((saved / g.target) * 100);
+    const history = g.deposits.slice().sort((a, b) => b.date.localeCompare(a.date) || b.createdAt - a.createdAt);
+    return `<section class="goal-card ${done ? 'done' : ''}" data-goal="${g.id}">
+        <div class="goal-head">
+          <span class="record-icon">${g.icon}</span>
+          <span class="goal-name">${escapeHtml(g.name)}</span>
+          <button class="icon-btn" data-goal-edit aria-label="修改目标" title="修改目标">✏️</button>
+        </div>
+        <div class="goal-nums">
+          <span class="goal-saved">${formatMoney(saved)}</span>
+          <span class="goal-target">目标 ${formatMoney(g.target)} · ${pct}%</span>
+        </div>
+        ${barHtml(saved, g.target)}
+        <p class="goal-info">${goalInfoHtml(g, saved)}</p>
+        <div class="action-row">
+          <button class="btn btn-primary" data-goal-deposit="in">＋ 存入</button>
+          <button class="btn btn-plain" data-goal-deposit="out" ${saved <= 0 ? 'disabled' : ''}>－ 取出</button>
+        </div>
+        ${history.length ? `
+        <details class="goal-history">
+          <summary>存取记录（${history.length} 笔）</summary>
+          ${history.map((d) => `
+            <div class="history-row">
+              <span class="h-main">
+                <div>${d.amount > 0 ? '存入' : '取出'}${d.note ? ' · ' + escapeHtml(d.note) : ''}</div>
+                <div class="h-date">${formatDateCn(d.date)}</div>
+              </span>
+              <span class="h-amt ${d.amount > 0 ? 'income' : 'expense'}">${d.amount > 0 ? '+' : '-'}${formatMoney(Math.abs(d.amount))}</span>
+              <button class="h-del" data-deposit-del="${d.id}" aria-label="删除这笔" title="删除这笔">✕</button>
+            </div>`).join('')}
+        </details>` : ''}
+      </section>`;
+  }).join('');
+}
+
+function editGoal(goal) {
+  openEditor({
+    title: goal ? '修改存钱目标' : '新建存钱目标',
+    name: goal ? goal.name : '',
+    icon: goal ? goal.icon : '🐷',
+    namePlaceholder: '比如：日本旅行',
+    extraHtml: `
+      <label class="field">
+        <span class="field-label">目标金额</span>
+        <input id="e-target" type="text" inputmode="decimal" class="input" placeholder="比如 5000" autocomplete="off"
+          value="${goal ? (goal.target / 100).toFixed(2) : ''}">
+      </label>
+      <label class="field">
+        <span class="field-label">希望哪天之前存够（可不填）</span>
+        <input id="e-deadline" type="date" class="input" value="${goal && goal.deadline ? goal.deadline : ''}">
+        <p class="field-hint">填了日期，会帮你算出每个月需要存多少。</p>
+      </label>`,
+    onSave({ name, icon }) {
+      const target = parseAmount($('e-target').value);
+      if (target === null) return '请输入正确的目标金额，比如 5000';
+      const deadline = $('e-deadline').value || null;
+      if (goal) {
+        Object.assign(goal, { name, icon, target, deadline });
+        showToast('目标已修改 ✓');
+      } else {
+        data.goals = data.goals || [];
+        data.goals.push({ id: newId('goal'), name, icon, target, deadline, deposits: [], createdAt: Date.now() });
+        showToast('目标已创建 ✓ 点「存入」开始存钱吧');
+      }
+      return '';
+    },
+    onDelete: goal ? () => {
+      const saved = goalSaved(goal);
+      const extra = goal.deposits.length ? `\n它的 ${goal.deposits.length} 笔存取记录（共 ${formatMoney(saved)}）也会一起删除。` : '';
+      if (!confirm(`确定删除目标「${goal.name}」吗？${extra}`)) return false;
+      data.goals = data.goals.filter((g) => g !== goal);
+      showToast('目标已删除');
+      return '';
+    } : null,
+  });
+}
+
+/** direction: 'in' 存入，'out' 取出 */
+function editDeposit(goal, direction) {
+  const saved = goalSaved(goal);
+  const isIn = direction === 'in';
+  openEditor({
+    title: `${goal.icon} ${goal.name} · ${isIn ? '存入' : '取出'}`,
+    withNameIcon: false,
+    extraHtml: `
+      <label class="amount-field">
+        <span class="currency">$</span>
+        <input id="e-dep-amount" type="text" inputmode="decimal" placeholder="0.00" autocomplete="off" aria-label="金额">
+      </label>
+      <p class="field-hint" style="margin:-6px 2px 14px">
+        ${isIn ? `已存 ${formatMoney(saved)}，还差 ${formatMoney(Math.max(0, goal.target - saved))}` : `目前已存 ${formatMoney(saved)}，最多能取出这么多`}
+      </p>
+      <label class="field">
+        <span class="field-label">日期</span>
+        <input id="e-dep-date" type="date" class="input" value="${todayStr()}">
+      </label>
+      <label class="field">
+        <span class="field-label">备注（可不填）</span>
+        <input id="e-dep-note" type="text" class="input" maxlength="50" placeholder="${isIn ? '比如：发工资存一笔' : '比如：临时急用'}">
+      </label>`,
+    onSave() {
+      const amount = parseAmount($('e-dep-amount').value);
+      const date = $('e-dep-date').value;
+      if (amount === null) return '请输入正确的金额，比如 100';
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return '请选择日期';
+      if (!isIn && amount > saved) return `最多只能取出 ${formatMoney(saved)}`;
+      goal.deposits.push({
+        id: newId('dep'),
+        amount: isIn ? amount : -amount,
+        date,
+        note: $('e-dep-note').value.trim(),
+        createdAt: Date.now(),
+      });
+      const nowSaved = goalSaved(goal);
+      if (isIn && saved < goal.target && nowSaved >= goal.target) {
+        showToast(`🎉 恭喜！「${goal.name}」目标达成！`, 'done');
+      } else {
+        showToast(isIn ? `已存入 ${formatMoney(amount)} ✓` : `已取出 ${formatMoney(amount)}`);
+      }
+      return '';
+    },
+  });
+  setTimeout(() => $('e-dep-amount')?.focus(), 50);
+}
+
+function deleteDeposit(goal, depositId) {
+  const dep = goal.deposits.find((d) => d.id === depositId);
+  if (!dep) return;
+  const remaining = goalSaved(goal) - dep.amount;
+  if (remaining < 0) {
+    alert('删除这笔存入后，已存金额会变成负数。请先删除后面的取出记录。');
+    return;
+  }
+  const what = `${dep.amount > 0 ? '存入' : '取出'} ${formatMoney(Math.abs(dep.amount))}（${formatDateCn(dep.date)}）`;
+  if (!confirm(`确定删除这笔${what}吗？`)) return;
+  goal.deposits = goal.deposits.filter((d) => d !== dep);
+  saveData();
+  showToast('已删除');
+  renderGoals();
+}
+
 /* ---------- 预算页 ---------- */
 
 /** 某个月每个分类花了多少（分） */
@@ -981,7 +1179,7 @@ function editBudget(category) {
       return '';
     } : null,
   });
-  setTimeout(() => $('e-budget').focus(), 50);
+  setTimeout(() => $('e-budget')?.focus(), 50);
 }
 
 /* ---------- 通用编辑弹窗（账户、分类、预算共用） ---------- */
@@ -993,13 +1191,16 @@ let editor = null; // { onSave, onDelete, icon, withNameIcon }
  * withNameIcon 为 true 时显示「名称」和「图标」；extraHtml 是额外的输入框。
  * onSave(values) 返回错误文字表示失败，返回空表示成功
  */
-function openEditor({ title, name = '', icon, withNameIcon = true, extraHtml = '', onSave, onDelete, deleteLabel = '删除' }) {
+function openEditor({
+  title, name = '', icon, withNameIcon = true, namePlaceholder = '比如：外卖',
+  extraHtml = '', onSave, onDelete, deleteLabel = '删除',
+}) {
   editor = { onSave, onDelete, icon, withNameIcon };
   $('edit-title').textContent = title;
   $('edit-body').innerHTML = (withNameIcon ? `
     <label class="field">
       <span class="field-label">名称</span>
-      <input id="e-name" type="text" class="input" maxlength="12" value="${escapeHtml(name)}" placeholder="比如：外卖" autocomplete="off">
+      <input id="e-name" type="text" class="input" maxlength="12" value="${escapeHtml(name)}" placeholder="${escapeHtml(namePlaceholder)}" autocomplete="off">
     </label>
     <div class="field">
       <span class="field-label">图标</span>
@@ -1011,7 +1212,7 @@ function openEditor({ title, name = '', icon, withNameIcon = true, extraHtml = '
   $('edit-delete').hidden = !onDelete;
   $('edit-delete').textContent = deleteLabel;
   openModal('edit-modal');
-  if (withNameIcon && !name) setTimeout(() => $('e-name').focus(), 50);
+  if (withNameIcon && !name) setTimeout(() => $('e-name')?.focus(), 50);
 }
 
 function submitEditor(event) {
@@ -1053,6 +1254,7 @@ function editAccount(account) {
     title: account ? '修改账户' : '添加账户',
     name: account ? account.name : '',
     icon: account ? account.icon : '👛',
+    namePlaceholder: '比如：储蓄卡',
     extraHtml: `
       <label class="field">
         <span class="field-label">初始余额</span>
@@ -1159,6 +1361,20 @@ function bindEvents() {
   window.addEventListener('resize', () => {
     clearTimeout(resizeTimer);
     resizeTimer = setTimeout(() => { if (currentPage === 'charts') renderTrend(); }, 150);
+  });
+
+  // 存钱目标页
+  $('add-goal-btn').addEventListener('click', () => editGoal(null));
+  $('goal-list').addEventListener('click', (e) => {
+    const card = e.target.closest('[data-goal]');
+    if (!card) return;
+    const goal = data.goals.find((g) => g.id === card.dataset.goal);
+    if (!goal) return;
+    const dep = e.target.closest('[data-goal-deposit]');
+    const del = e.target.closest('[data-deposit-del]');
+    if (e.target.closest('[data-goal-edit]')) editGoal(goal);
+    else if (dep) editDeposit(goal, dep.dataset.goalDeposit);
+    else if (del) deleteDeposit(goal, del.dataset.depositDel);
   });
 
   // 账户页
