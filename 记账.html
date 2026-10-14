@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#f5f6f8" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#111418" media="(prefers-color-scheme: dark)">
+  <title>记账本</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <h1 class="app-title">记账本</h1>
+    </header>
+
+    <!-- ===== 明细页 ===== -->
+    <main id="page-records" class="page">
+      <div class="month-switch">
+        <button class="icon-btn" id="prev-month" aria-label="上个月">‹</button>
+        <button class="month-label" id="month-label" title="回到本月"></button>
+        <button class="icon-btn" id="next-month" aria-label="下个月">›</button>
+      </div>
+
+      <section class="summary">
+        <div class="summary-item">
+          <span class="summary-label">本月支出</span>
+          <span class="summary-value expense" id="sum-expense">$0.00</span>
+        </div>
+        <div class="summary-item">
+          <span class="summary-label">本月收入</span>
+          <span class="summary-value income" id="sum-income">$0.00</span>
+        </div>
+        <div class="summary-item">
+          <span class="summary-label">结余</span>
+          <span class="summary-value" id="sum-balance">$0.00</span>
+        </div>
+      </section>
+
+      <section id="record-list" class="record-list"></section>
+    </main>
+
+    <button class="fab" id="add-btn" aria-label="记一笔">
+      <span class="fab-plus">＋</span><span class="fab-text">记一笔</span>
+    </button>
+  </div>
+
+  <!-- ===== 记一笔 / 编辑 弹窗 ===== -->
+  <div class="modal-backdrop" id="record-modal" hidden>
+    <form class="sheet" id="record-form" novalidate>
+      <div class="sheet-head">
+        <h2 id="form-title">记一笔</h2>
+        <button type="button" class="icon-btn" id="close-modal" aria-label="关闭">✕</button>
+      </div>
+
+      <div class="segmented" role="tablist">
+        <button type="button" class="seg-btn" data-type="expense">支出</button>
+        <button type="button" class="seg-btn" data-type="income">收入</button>
+      </div>
+
+      <label class="amount-field">
+        <span class="currency">$</span>
+        <input id="f-amount" type="text" inputmode="decimal" placeholder="0.00" autocomplete="off" aria-label="金额">
+      </label>
+
+      <div class="field">
+        <span class="field-label">分类</span>
+        <div class="chip-grid" id="f-categories"></div>
+      </div>
+
+      <div class="field">
+        <span class="field-label">账户</span>
+        <div class="chip-row" id="f-accounts"></div>
+      </div>
+
+      <div class="field-row">
+        <label class="field">
+          <span class="field-label">日期</span>
+          <input id="f-date" type="date" class="input">
+        </label>
+      </div>
+
+      <label class="field">
+        <span class="field-label">备注（可不填）</span>
+        <input id="f-note" type="text" class="input" maxlength="100" placeholder="比如：和朋友吃午饭">
+      </label>
+
+      <p class="form-error" id="form-error" role="alert"></p>
+
+      <div class="sheet-actions">
+        <button type="button" class="btn btn-danger" id="delete-btn" hidden>删除</button>
+        <button type="submit" class="btn btn-primary">保存</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script src="js/app.js"></script>
+</body>
+</html>
