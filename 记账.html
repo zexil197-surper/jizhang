@@ -33,6 +33,7 @@
 
       <button class="backup-reminder" id="backup-reminder" hidden></button>
       <button class="budget-alert" id="budget-alert" hidden></button>
+      <section class="tip-card" id="daily-tip" hidden></section>
 
       <section class="summary">
         <div class="summary-item">
@@ -81,6 +82,7 @@
 
     <!-- ===== 存钱目标页 ===== -->
     <main id="page-goals" class="page" hidden>
+      <section class="advice-card" id="savings-advice"></section>
       <section class="net-card" id="goals-summary"></section>
       <button class="btn btn-primary btn-block" id="add-goal-btn">＋ 新建存钱目标</button>
       <div id="goal-list"></div>
@@ -114,6 +116,8 @@
         <button class="month-label" id="b-month-label" title="回到本月"></button>
         <button class="icon-btn" id="b-next-month" aria-label="下个月">›</button>
       </div>
+
+      <button class="btn btn-primary btn-block auto-budget-btn" id="auto-budget-btn">✨ 帮我自动设置预算</button>
 
       <section class="budget-total" id="budget-total"></section>
 
@@ -230,13 +234,14 @@
       <p class="form-error" id="edit-error" role="alert"></p>
       <div class="sheet-actions">
         <button type="button" class="btn btn-danger" id="edit-delete" hidden>删除</button>
-        <button type="submit" class="btn btn-primary">保存</button>
+        <button type="submit" class="btn btn-primary" id="edit-submit">保存</button>
       </div>
     </form>
   </div>
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
+  <script src="js/tips.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>

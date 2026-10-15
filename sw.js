@@ -8,12 +8,13 @@
    ⚠️ 新增文件时要加到 APP_FILES 里，并把 CACHE_NAME 的数字加 1。
    ========================================================= */
 
-const CACHE_NAME = 'jizhang-v1';
+const CACHE_NAME = 'jizhang-v2';
 const APP_FILES = [
   './',
   './index.html',
   './记账.html',
   './css/style.css',
+  './js/tips.js',
   './js/app.js',
   './manifest.webmanifest',
   './icons/icon-192.png',

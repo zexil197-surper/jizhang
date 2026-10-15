@@ -245,6 +245,7 @@ function renderRecords() {
   balanceEl.className = 'summary-value ' + (income - expense < 0 ? 'expense' : '');
   renderBackupReminder();
   renderBudgetAlert();
+  renderDailyTip();
 
   const list = $('record-list');
   if (monthTx.length === 0) {
@@ -881,6 +882,7 @@ function goalInfoHtml(goal, saved) {
 }
 
 function renderGoals() {
+  renderSavingsAdvice();
   const goals = data.goals || [];
   const totalSaved = goals.reduce((s, g) => s + goalSaved(g), 0);
   const doneCount = goals.filter((g) => goalSaved(g) >= g.target).length;
@@ -1032,6 +1034,297 @@ function deleteDeposit(goal, depositId) {
   saveData();
   showToast('已删除');
   renderGoals();
+}
+
+/* ---------- 理财助手：自动预算、存钱建议、每日小知识 ----------
+   都是按通用规则在本地计算，不联网，也不是个人投资建议。 */
+
+const SAVE_RATE = 0.2;          // 50/30/20：建议存下收入的 20%
+const SPEND_RATE = 0.8;         // 必需 + 想要 最多占收入的 80%
+const MIN_WANT_KEEP = 0.5;      // 「想要」类最多压缩到原来的一半，压太狠不现实
+const EMERGENCY_MONTHS = 3;     // 应急金 = 3 个月生活费（用户选的）
+const NEED_CATEGORY_IDS = new Set(['cat-food', 'cat-transport', 'cat-housing', 'cat-medical']);
+
+/** 分类是「必需」(need) 还是「想要」(want)；用户可以在自动预算里改 */
+function categoryKind(c) {
+  return c.kind || (NEED_CATEGORY_IDS.has(c.id) ? 'need' : 'want');
+}
+
+/** 把「分」向上取整到 $10 */
+function roundUp10(cents) {
+  return Math.ceil(cents / 1000) * 1000;
+}
+
+function monthLabel(month) {
+  const [y, m] = month.split('-').map(Number);
+  return `${y}年${m}月`;
+}
+
+/**
+ * 最近的收支情况：优先用本月之前 3 个整月里有记录的月份。
+ * 一个整月都没有时，退而用本月到目前为止的数据（partial = true）。
+ */
+function recentStats() {
+  const thisMonth = currentMonthStr();
+  const candidates = [1, 2, 3].map((i) => shiftMonth(thisMonth, -i));
+  const hasData = new Set(data.transactions.filter((t) => t.type !== 'transfer').map((t) => t.date.slice(0, 7)));
+  let months = candidates.filter((m) => hasData.has(m));
+  const partial = months.length === 0;
+  if (partial) months = hasData.has(thisMonth) ? [thisMonth] : [];
+
+  const n = months.length;
+  const monthSet = new Set(months);
+  let income = 0;
+  let expense = 0;
+  const byCat = new Map();
+  for (const t of data.transactions) {
+    if (!monthSet.has(t.date.slice(0, 7))) continue;
+    if (t.type === 'income') income += t.amount;
+    else if (t.type === 'expense') {
+      expense += t.amount;
+      byCat.set(t.categoryId, (byCat.get(t.categoryId) || 0) + t.amount);
+    }
+  }
+  const avgByCat = new Map();
+  for (const [id, sum] of byCat) avgByCat.set(id, n ? Math.round(sum / n) : 0);
+  return {
+    n,
+    months: months.slice().sort(),
+    partial,
+    avgIncome: n ? Math.round(income / n) : 0,
+    avgExpense: n ? Math.round(expense / n) : 0,
+    avgByCat,
+  };
+}
+
+function statsSourceText(stats) {
+  if (!stats.n) return '';
+  if (stats.partial) return `⚠️ 只有本月（${monthLabel(stats.months[0])}）到今天的记录，数据较少，建议仅供参考。记满一个月后会更准。`;
+  const range = stats.n === 1 ? monthLabel(stats.months[0]) : `${monthLabel(stats.months[0])} ~ ${monthLabel(stats.months[stats.n - 1])}`;
+  return `参考了 ${range} 的记录（${stats.n} 个月平均）${stats.n < 3 ? '，记录再多一些会更准' : ''}。`;
+}
+
+/**
+ * 按 50/30/20 给出每个分类的建议预算。
+ * 先按近期平均花费；如果 必需+想要 超过收入的 80%，按比例压缩「想要」类（最多压到一半）。
+ */
+function suggestBudgets(income, rows) {
+  const needs = rows.filter((r) => r.kind === 'need').reduce((s, r) => s + r.avg, 0);
+  const wants = rows.filter((r) => r.kind === 'want').reduce((s, r) => s + r.avg, 0);
+  let wantFactor = 1;
+  if (income > 0 && wants > 0 && needs + wants > income * SPEND_RATE) {
+    const allowed = Math.max(0, income * SPEND_RATE - needs);
+    wantFactor = Math.max(MIN_WANT_KEEP, allowed / wants);
+  }
+  for (const r of rows) {
+    // 被压缩的「想要」类向下取整，避免取整后又超过 80%
+    r.suggested = r.kind === 'want' && wantFactor < 1
+      ? Math.max(1000, Math.floor((r.avg * wantFactor) / 1000) * 1000)
+      : roundUp10(r.avg);
+  }
+  return wantFactor;
+}
+
+function openAutoBudget() {
+  const stats = recentStats();
+  const rows = data.categories
+    .filter((c) => c.type === 'expense' && stats.avgByCat.get(c.id) > 0)
+    .map((c) => ({ cat: c, kind: categoryKind(c), avg: stats.avgByCat.get(c.id) }));
+  if (!rows.length) {
+    alert('还没有支出记录，没法给出建议。\n先记一段时间的账（最好满一个月），再来试试。');
+    return;
+  }
+
+  const renderRows = (income) => {
+    const wantFactor = suggestBudgets(income, rows);
+    $('ab-rows').innerHTML = rows.map((r, i) => `
+      <div class="ab-row">
+        <div class="ab-top">
+          <span class="ab-name">${r.cat.icon} ${escapeHtml(r.cat.name)}</span>
+          <button type="button" class="kind-tag ${r.kind}" data-kind-i="${i}" title="点一下切换">${r.kind === 'need' ? '必需' : '想要'}</button>
+        </div>
+        <div class="ab-bottom">
+          <span class="ab-avg">月均花 ${formatMoney(r.avg)}</span>
+          <label class="ab-input"><span>$</span><input type="text" inputmode="decimal" data-ab-i="${i}" value="${(r.suggested / 100).toFixed(0)}" aria-label="${escapeHtml(r.cat.name)}的预算"></label>
+        </div>
+      </div>`).join('');
+    $('ab-note').textContent = wantFactor < 1
+      ? `你最近的开销超过了收入的 80%，所以「想要」类的预算已经按比例减少（约减 ${Math.round((1 - wantFactor) * 100)}%）。`
+      : '';
+    updateAutoBudgetSummary();
+  };
+
+  openEditor({
+    title: '✨ 自动设置预算',
+    withNameIcon: false,
+    submitLabel: '应用这个预算',
+    extraHtml: `
+      <p class="field-hint" style="margin:0 2px 12px">${statsSourceText(stats)}</p>
+      <label class="field">
+        <span class="field-label">你每月的收入（税后，可以改）</span>
+        <input id="ab-income" type="text" inputmode="decimal" class="input" value="${(stats.avgIncome / 100).toFixed(0)}" autocomplete="off">
+      </label>
+      <div class="ab-summary" id="ab-summary"></div>
+      <p class="field-hint" id="ab-note"></p>
+      <div class="field-label" style="margin-top:12px">每个分类的建议预算（可以改）</div>
+      <div class="ab-rows" id="ab-rows"></div>
+      <p class="field-hint">按常见的「50/30/20 方法」：必需开销约 50%、想要的开销约 30%、存下 20%。点「必需 / 想要」可以切换分类的类型。<br>这只是通用参考，不是专业理财建议。</p>`,
+    onSave() {
+      const budgets = data.budgets || {};
+      for (const [i, r] of rows.entries()) {
+        const input = document.querySelector(`[data-ab-i="${i}"]`);
+        const cents = input.value.trim() === '' ? 0 : parseAmount(input.value, true);
+        if (cents === null || cents < 0) return `「${r.cat.name}」的预算金额不对`;
+        if (cents > 0) budgets[r.cat.id] = cents;
+        else delete budgets[r.cat.id];
+        r.cat.kind = r.kind;
+      }
+      data.budgets = budgets;
+      showToast('预算已自动设置 ✓');
+      return '';
+    },
+  });
+
+  const incomeInput = $('ab-income');
+  incomeInput.addEventListener('input', () => renderRows(parseAmount(incomeInput.value) || 0));
+  $('ab-rows').addEventListener('input', updateAutoBudgetSummary);
+  $('ab-rows').addEventListener('click', (e) => {
+    const tag = e.target.closest('[data-kind-i]');
+    if (!tag) return;
+    const r = rows[Number(tag.dataset.kindI)];
+    r.kind = r.kind === 'need' ? 'want' : 'need';
+    renderRows(parseAmount(incomeInput.value) || 0);
+  });
+  renderRows(stats.avgIncome);
+
+  function updateAutoBudgetSummary() {
+    const income = parseAmount($('ab-income').value) || 0;
+    let needs = 0;
+    let wants = 0;
+    rows.forEach((r, i) => {
+      const v = parseAmount(document.querySelector(`[data-ab-i="${i}"]`).value) || 0;
+      if (r.kind === 'need') needs += v;
+      else wants += v;
+    });
+    const save = income - needs - wants;
+    const pct = (v) => (income > 0 ? `${Math.round((v / income) * 100)}%` : '—');
+    const level = save < 0 ? 'over' : (income > 0 && save < income * SAVE_RATE ? 'warn' : 'ok');
+    const msg = !income
+      ? '填上每月收入，就能算出每月能存多少。'
+      : level === 'over' ? '⚠️ 预算加起来超过了收入，需要减少一些开销。'
+        : level === 'warn' ? `能存的钱少于建议的 20%（${formatMoney(Math.round(income * SAVE_RATE))}），可以试着调低「想要」类的预算。`
+          : '👍 按这个预算，能存下收入的 20% 以上。';
+    $('ab-summary').className = `ab-summary lvl-${level}`;
+    $('ab-summary').innerHTML = `
+      <div class="ab-sum-grid">
+        <div><span>必需</span><b>${formatMoney(needs)}</b><small>${pct(needs)}</small></div>
+        <div><span>想要</span><b>${formatMoney(wants)}</b><small>${pct(wants)}</small></div>
+        <div><span>每月能存</span><b class="ab-save">${formatMoney(save)}</b><small>${pct(save)}</small></div>
+      </div>
+      <p>${msg}</p>`;
+  }
+}
+
+/* ----- 存钱建议（存钱页顶部） ----- */
+
+function findEmergencyGoal() {
+  return (data.goals || []).find((g) => g.kind === 'emergency');
+}
+
+function renderSavingsAdvice() {
+  const stats = recentStats();
+  const el = $('savings-advice');
+  if (!stats.n || (!stats.avgIncome && !stats.avgExpense)) {
+    el.innerHTML = `<h2 class="chart-title">💡 存钱建议</h2>
+      <p class="field-hint" style="margin:0">记一段时间的收入和支出后，这里会帮你算出：每月建议存多少、应急金需要多少。</p>`;
+    return;
+  }
+
+  const suggested = Math.round(stats.avgIncome * SAVE_RATE);
+  const left = stats.avgIncome - stats.avgExpense;
+  const emergencyTarget = roundUp10(stats.avgExpense * EMERGENCY_MONTHS);
+  const goal = findEmergencyGoal();
+
+  let verdict;
+  if (!stats.avgIncome) verdict = '还没有收入记录，记一笔工资后建议会更准确。';
+  else if (left <= 0) verdict = '⚠️ 最近的支出超过了收入。可以先去「预算」页点「✨ 帮我自动设置预算」，控制一下开销。';
+  else if (left < suggested) verdict = `按最近的开销，每月只剩 ${formatMoney(left)}，比建议少一些。可以试试「预算」页的自动设置，减少「想要」类开销。`;
+  else verdict = `👍 按最近的开销，每月能剩 ${formatMoney(left)}，已经做到了。记得及时把钱存进下面的存钱目标。`;
+
+  let emergencyHtml;
+  if (!stats.avgExpense) {
+    emergencyHtml = '';
+  } else if (!goal) {
+    emergencyHtml = `<button class="btn btn-primary btn-block" id="create-emergency">🛟 创建「应急金」目标（${formatMoney(emergencyTarget)}）</button>`;
+  } else {
+    const differs = Math.abs(goal.target - emergencyTarget) > goal.target * 0.1;
+    emergencyHtml = `<p class="field-hint" style="margin:8px 0 0">已有「${escapeHtml(goal.name)}」目标：已存 ${formatMoney(goalSaved(goal))} / ${formatMoney(goal.target)}。</p>
+      ${differs ? `<button class="btn btn-plain btn-block" id="update-emergency">按最新生活费更新目标为 ${formatMoney(emergencyTarget)}</button>` : ''}`;
+  }
+
+  el.innerHTML = `
+    <h2 class="chart-title">💡 存钱建议</h2>
+    <div class="advice-grid">
+      <div><span>月均收入</span><b>${formatMoney(stats.avgIncome)}</b></div>
+      <div><span>月均生活费</span><b>${formatMoney(stats.avgExpense)}</b></div>
+      <div class="hl"><span>建议每月存</span><b>${formatMoney(suggested)}</b></div>
+    </div>
+    <p class="advice-text">建议每月存收入的 20%（50/30/20 方法）。${verdict}</p>
+    ${stats.avgExpense ? `<p class="advice-text"><b>应急金：</b>建议存够 ${EMERGENCY_MONTHS} 个月的生活费，约 <b>${formatMoney(emergencyTarget)}</b>，用来应付失业、生病等意外。
+      <a href="https://moneysmart.gov.au/saving/save-for-an-emergency-fund" target="_blank" rel="noopener">了解更多 ›</a></p>` : ''}
+    ${emergencyHtml}
+    <p class="field-hint" style="margin:10px 0 0">${statsSourceText(stats)} 这只是通用参考，不是专业理财建议。</p>`;
+}
+
+function createOrUpdateEmergencyGoal() {
+  const stats = recentStats();
+  const target = roundUp10(stats.avgExpense * EMERGENCY_MONTHS);
+  const monthly = Math.round(stats.avgIncome * SAVE_RATE);
+  let goal = findEmergencyGoal();
+  if (goal) {
+    goal.target = target;
+    showToast(`应急金目标已更新为 ${formatMoney(target)} ✓`);
+  } else {
+    // 如果按建议每月存 20%，大约多久能存够 → 作为目标日期
+    let deadline = null;
+    if (monthly > 0) {
+      const months = Math.max(1, Math.ceil(target / monthly));
+      const d = new Date();
+      d.setMonth(d.getMonth() + months);
+      deadline = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+    }
+    goal = { id: newId('goal'), kind: 'emergency', name: '应急金', icon: '🛟', target, deadline, deposits: [], createdAt: Date.now() };
+    data.goals = data.goals || [];
+    data.goals.unshift(goal);
+    showToast('已创建「应急金」目标 ✓');
+  }
+  saveData();
+  renderGoals();
+}
+
+/* ----- 每日理财小知识（明细页顶部） ----- */
+
+function todayTip() {
+  if (typeof DAILY_TIPS === 'undefined' || !DAILY_TIPS.length) return null;
+  const d = new Date();
+  const dayNumber = Math.floor(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / 86400000);
+  return DAILY_TIPS[dayNumber % DAILY_TIPS.length];
+}
+
+function renderDailyTip() {
+  const el = $('daily-tip');
+  const tip = todayTip();
+  const hiddenToday = data.settings && data.settings.tipHiddenDate === todayStr();
+  el.hidden = !tip || hiddenToday || viewMonth !== currentMonthStr();
+  if (el.hidden) return;
+  el.innerHTML = `
+    <div class="tip-head">
+      <span class="tip-label">💡 今日理财小知识</span>
+      <button class="tip-close" id="tip-close" aria-label="今天不再显示" title="今天不再显示">✕</button>
+    </div>
+    <div class="tip-title">${escapeHtml(tip.title)}</div>
+    <p class="tip-text">${escapeHtml(tip.text)}</p>
+    <a class="tip-link" href="${tip.link}" target="_blank" rel="noopener">了解更多（澳洲政府网站，英文）›</a>`;
 }
 
 /* ---------- 预算页 ---------- */
@@ -1221,8 +1514,9 @@ let editor = null; // { onSave, onDelete, icon, withNameIcon }
  */
 function openEditor({
   title, name = '', icon, withNameIcon = true, namePlaceholder = '比如：外卖',
-  extraHtml = '', onSave, onDelete, deleteLabel = '删除',
+  extraHtml = '', onSave, onDelete, deleteLabel = '删除', submitLabel = '保存',
 }) {
+  $('edit-submit').textContent = submitLabel;
   editor = { onSave, onDelete, icon, withNameIcon };
   $('edit-title').textContent = title;
   $('edit-body').innerHTML = (withNameIcon ? `
@@ -1389,6 +1683,18 @@ function bindEvents() {
   window.addEventListener('resize', () => {
     clearTimeout(resizeTimer);
     resizeTimer = setTimeout(() => { if (currentPage === 'charts') renderTrend(); }, 150);
+  });
+
+  // 理财助手
+  $('auto-budget-btn').addEventListener('click', openAutoBudget);
+  $('savings-advice').addEventListener('click', (e) => {
+    if (e.target.closest('#create-emergency, #update-emergency')) createOrUpdateEmergencyGoal();
+  });
+  $('daily-tip').addEventListener('click', (e) => {
+    if (!e.target.closest('#tip-close')) return;
+    data.settings = { ...(data.settings || {}), tipHiddenDate: todayStr() };
+    saveData();
+    renderDailyTip();
   });
 
   // 存钱目标页

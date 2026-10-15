@@ -529,6 +529,101 @@ button { cursor: pointer; }
 }
 .history-row .h-del:hover { background: var(--surface-2); color: var(--expense); }
 
+/* ========== 理财助手 ========== */
+.auto-budget-btn { margin: 0 0 16px; }
+
+.tip-card {
+  background: var(--surface);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  border-left: 4px solid var(--primary);
+  padding: 12px 14px;
+  margin-bottom: 12px;
+}
+.tip-card[hidden] { display: none; }
+.tip-head { display: flex; justify-content: space-between; align-items: center; }
+.tip-label { font-size: 13px; color: var(--primary); font-weight: 700; }
+.tip-close {
+  width: 36px;
+  height: 36px;
+  margin: -6px -6px 0 0;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text-2);
+}
+.tip-close:hover { background: var(--surface-2); }
+.tip-title { font-weight: 700; margin-top: 2px; }
+.tip-text { margin: 4px 0 6px; font-size: 15px; color: var(--text); }
+.tip-link { font-size: 14px; color: var(--primary); text-decoration: none; display: inline-block; min-height: 32px; line-height: 32px; }
+
+.advice-card {
+  background: var(--surface);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 16px;
+  margin: 8px 0 16px;
+}
+.advice-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; text-align: center; }
+.advice-grid div { background: var(--surface-2); border-radius: 12px; padding: 8px 4px; min-width: 0; }
+.advice-grid span { display: block; font-size: 12px; color: var(--text-2); }
+.advice-grid b { font-size: clamp(14px, 4.2vw, 18px); white-space: nowrap; }
+.advice-grid .hl { background: color-mix(in srgb, var(--income) 14%, var(--surface)); }
+.advice-grid .hl b { color: var(--income); }
+.advice-text { font-size: 14px; margin: 10px 0 0; }
+.advice-text a { color: var(--primary); text-decoration: none; }
+.advice-card .btn-block { margin-top: 12px; }
+
+.ab-summary { border-radius: 14px; padding: 12px; background: var(--surface); border: 2px solid var(--income); }
+.ab-summary.lvl-warn { border-color: var(--warn); }
+.ab-summary.lvl-over { border-color: var(--expense); }
+.ab-summary p { margin: 8px 0 0; font-size: 14px; }
+.ab-sum-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; text-align: center; }
+.ab-sum-grid span, .ab-sum-grid small { display: block; font-size: 12px; color: var(--text-2); }
+.ab-sum-grid b { font-size: clamp(14px, 4.2vw, 17px); white-space: nowrap; }
+.ab-summary.lvl-ok .ab-save { color: var(--income); }
+.ab-summary.lvl-warn .ab-save { color: var(--warn); }
+.ab-summary.lvl-over .ab-save { color: var(--expense); }
+
+.ab-rows { background: var(--surface); border-radius: 14px; overflow: hidden; margin-top: 6px; }
+.ab-row { padding: 10px 12px; }
+.ab-row + .ab-row { border-top: 1px solid var(--border); }
+.ab-top, .ab-bottom { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.ab-name { font-weight: 600; }
+.ab-avg { font-size: 13px; color: var(--text-2); }
+.ab-input {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  border: 2px solid var(--border);
+  border-radius: 10px;
+  padding: 0 10px;
+  background: var(--bg);
+  margin-top: 6px;
+}
+.ab-input:focus-within { border-color: var(--primary); }
+.ab-input span { color: var(--text-2); }
+.ab-input input {
+  width: 90px;
+  min-height: 44px;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.kind-tag {
+  min-height: 32px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: none;
+  font-size: 13px;
+  font-weight: 700;
+}
+.kind-tag.need { background: color-mix(in srgb, var(--primary) 15%, var(--surface)); color: var(--primary); }
+.kind-tag.want { background: color-mix(in srgb, var(--cat-2) 15%, var(--surface)); color: var(--cat-2); }
+
 /* ========== 图标选择 ========== */
 .icon-grid {
   display: grid;
