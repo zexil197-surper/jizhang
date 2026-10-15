@@ -624,6 +624,89 @@ button { cursor: pointer; }
 .kind-tag.need { background: color-mix(in srgb, var(--primary) 15%, var(--surface)); color: var(--primary); }
 .kind-tag.want { background: color-mix(in srgb, var(--cat-2) 15%, var(--surface)); color: var(--cat-2); }
 
+/* ========== 快捷记账 ========== */
+.quick-bar { margin-top: 16px; }
+.quick-head { display: flex; justify-content: space-between; align-items: center; padding: 0 4px 6px; }
+.quick-title { font-size: 14px; color: var(--text-2); font-weight: 600; }
+.pill-btn {
+  min-height: 40px;
+  padding: 0 14px;
+  border: none;
+  border-radius: 999px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  color: var(--primary);
+  font-size: 14px;
+  font-weight: 600;
+}
+.quick-chips {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 2px 2px 8px;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+.quick-chips::-webkit-scrollbar { display: none; }
+.quick-chip {
+  flex: none;
+  min-height: 48px;
+  padding: 0 16px;
+  border: 2px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+  font-size: 15px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.quick-chip:active { transform: scale(0.96); border-color: var(--primary); }
+.quick-chip.q-income { border-color: color-mix(in srgb, var(--income) 45%, var(--border)); }
+.quick-chip.manage { color: var(--text-2); font-weight: 400; }
+.quick-empty { margin: 0; padding: 10px 12px; font-size: 13px; color: var(--text-2); background: var(--surface); border-radius: 12px; }
+
+.chip.save-quick { width: 100%; margin: -4px 0 12px; justify-content: flex-start; color: var(--text-2); }
+.chip.save-quick.active { color: var(--primary); font-weight: 700; }
+.chip.save-quick[hidden] { display: none; }
+
+.toast.has-action { pointer-events: auto; display: flex; align-items: center; gap: 14px; white-space: pre-line; }
+.toast-action {
+  flex: none;
+  min-height: 36px;
+  padding: 0 14px;
+  border: none;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.25);
+  color: inherit;
+  font-weight: 700;
+}
+
+/* ========== 导入银行账单 ========== */
+.imp-summary { font-size: 14px; margin: 0 2px 8px; }
+.imp-tools { display: flex; gap: 8px; margin-bottom: 8px; }
+.imp-tool { flex: 0 0 auto; min-height: 40px; padding: 0 16px; font-size: 14px; }
+.imp-list { background: var(--surface); border-radius: 14px; overflow: hidden; }
+.imp-row { display: flex; gap: 10px; padding: 10px 12px; }
+.imp-row + .imp-row { border-top: 1px solid var(--border); }
+.imp-row.off .imp-main { opacity: 0.45; }
+.imp-check { flex: none; display: flex; align-items: flex-start; padding-top: 2px; }
+.imp-check input { width: 24px; height: 24px; accent-color: var(--primary); }
+.imp-main { flex: 1; min-width: 0; }
+.imp-top { display: flex; justify-content: space-between; gap: 8px; }
+.imp-desc { font-size: 14px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.imp-amt { flex: none; font-weight: 700; font-variant-numeric: tabular-nums; }
+.imp-date { font-size: 12px; color: var(--text-2); }
+.imp-tag { color: var(--warn); }
+.imp-cat {
+  margin-top: 6px;
+  width: 100%;
+  min-height: 40px;
+  padding: 0 10px;
+  border: 2px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg);
+  font-size: 15px;
+}
+
 /* ========== 图标选择 ========== */
 .icon-grid {
   display: grid;

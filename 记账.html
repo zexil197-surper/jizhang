@@ -50,6 +50,15 @@
         </div>
       </section>
 
+      <section class="quick-bar">
+        <div class="quick-head">
+          <span class="quick-title">⚡ 快捷记账</span>
+          <button class="pill-btn" id="bank-import-btn">🏦 导入银行账单</button>
+        </div>
+        <div class="quick-chips" id="quick-chips"></div>
+        <input type="file" id="bank-file" accept=".csv,text/csv,text/plain" hidden>
+      </section>
+
       <section id="record-list" class="record-list"></section>
     </main>
 
@@ -214,6 +223,8 @@
         <input id="f-note" type="text" class="input" maxlength="100" placeholder="比如：和朋友吃午饭">
       </label>
 
+      <button type="button" class="chip save-quick" id="f-save-quick" aria-pressed="false">⚡ 同时存为快捷按钮，以后点一下就记好</button>
+
       <p class="form-error" id="form-error" role="alert"></p>
 
       <div class="sheet-actions">
@@ -243,5 +254,6 @@
 
   <script src="js/tips.js"></script>
   <script src="js/app.js"></script>
+  <script src="js/bank-import.js"></script>
 </body>
 </html>

@@ -162,13 +162,26 @@ function accountBalances() {
 const $ = (id) => document.getElementById(id);
 
 let toastTimer = null;
-/** 底部小提示。level 为 'warn'（黄）或 'over'（红）时更醒目、显示更久 */
-function showToast(message, level = '') {
+/**
+ * 底部小提示。level 为 'warn'（黄）或 'over'（红）时更醒目、显示更久。
+ * action = { label, onClick } 时显示一个按钮（比如「撤销」）
+ */
+function showToast(message, level = '', action = null) {
   const el = $('toast');
   el.textContent = message;
-  el.className = `toast show ${level}`;
+  if (action) {
+    const btn = document.createElement('button');
+    btn.className = 'toast-action';
+    btn.textContent = action.label;
+    btn.addEventListener('click', () => {
+      el.classList.remove('show');
+      action.onClick();
+    });
+    el.appendChild(btn);
+  }
+  el.className = `toast show ${level} ${action ? 'has-action' : ''}`;
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => el.classList.remove('show'), level ? 4500 : 2200);
+  toastTimer = setTimeout(() => el.classList.remove('show'), action ? 6000 : level ? 4500 : 2200);
 }
 
 function openModal(id) {
@@ -246,6 +259,7 @@ function renderRecords() {
   renderBackupReminder();
   renderBudgetAlert();
   renderDailyTip();
+  renderQuickChips();
 
   const list = $('record-list');
   if (monthTx.length === 0) {
@@ -324,6 +338,7 @@ function openRecordForm(tx, presetType) {
   form.categoryId = tx ? tx.categoryId : null;
   form.accountId = tx ? tx.accountId : lastAcc;
   form.toAccountId = tx ? tx.toAccountId || null : null;
+  form.saveQuick = false;
 
   $('form-title').textContent = tx ? '修改记录' : (form.type === 'transfer' ? '转账' : '记一笔');
   $('f-amount').value = tx ? (tx.amount / 100).toFixed(2) : '';
@@ -352,6 +367,11 @@ function renderFormChoices() {
 
   $('cat-field').hidden = isTransfer;
   $('to-field').hidden = !isTransfer;
+  const quickBtn = $('f-save-quick');
+  quickBtn.hidden = isTransfer || !!form.editingId;
+  quickBtn.classList.toggle('active', form.saveQuick);
+  quickBtn.setAttribute('aria-pressed', String(form.saveQuick));
+  quickBtn.textContent = form.saveQuick ? '⚡ ✓ 会同时存为快捷按钮' : '⚡ 同时存为快捷按钮，以后点一下就记好';
   $('acc-label').textContent = isTransfer ? '从哪个账户转出' : '账户';
 
   if (!isTransfer) {
@@ -405,6 +425,7 @@ function submitRecordForm(event) {
     Object.assign(tx, fields);
   } else {
     data.transactions.push({ id: newId('tx'), ...fields, createdAt: Date.now() });
+    if (form.saveQuick && !isTransfer) addQuickItem(fields);
   }
   if (!isTransfer) data.lastAccountId = form.accountId;
 
@@ -424,6 +445,103 @@ function deleteCurrentRecord() {
   if (saveData()) showToast('已删除');
   closeModal('record-modal');
   renderCurrentPage();
+}
+
+/* ---------- 快捷记账 ---------- */
+
+function quickLabel(q) {
+  const cat = findCategory(q.categoryId);
+  return `${cat ? cat.icon : '❓'} ${q.note || (cat ? cat.name : '未分类')} ${formatMoney(q.amount)}`;
+}
+
+function addQuickItem(fields) {
+  data.quickItems = data.quickItems || [];
+  const same = data.quickItems.some((q) => q.type === fields.type && q.amount === fields.amount
+    && q.categoryId === fields.categoryId && q.accountId === fields.accountId && q.note === fields.note);
+  if (!same) {
+    data.quickItems.push({
+      id: newId('quick'),
+      type: fields.type,
+      amount: fields.amount,
+      categoryId: fields.categoryId,
+      accountId: fields.accountId,
+      note: fields.note,
+    });
+  }
+}
+
+function renderQuickChips() {
+  const items = data.quickItems || [];
+  $('quick-chips').innerHTML = items.length
+    ? items.map((q) => `<button class="quick-chip q-${q.type}" data-quick="${q.id}">${escapeHtml(quickLabel(q))}</button>`).join('')
+      + '<button class="quick-chip manage" id="quick-manage">✏️ 管理</button>'
+    : '<p class="quick-empty">记一笔时点「⚡ 同时存为快捷按钮」，常记的账以后点一下就记好。</p>';
+}
+
+/** 点快捷按钮：用今天的日期马上记一笔，可以撤销 */
+function quickAdd(q) {
+  if (!findCategory(q.categoryId) || !findAccount(q.accountId)) {
+    alert('这个快捷按钮用到的分类或账户已经被删除了，请在「管理」里删掉它，重新添加。');
+    return;
+  }
+  const date = todayStr();
+  const month = date.slice(0, 7);
+  const before = q.type === 'expense' ? budgetInfo(q.categoryId, month) : null;
+  const tx = {
+    id: newId('tx'),
+    type: q.type,
+    amount: q.amount,
+    categoryId: q.categoryId,
+    accountId: q.accountId,
+    toAccountId: null,
+    date,
+    note: q.note,
+    createdAt: Date.now(),
+  };
+  data.transactions.push(tx);
+  if (!saveData()) return;
+  viewMonth = month;
+  renderCurrentPage();
+
+  const crossing = q.type === 'expense' ? budgetCrossing(q.categoryId, month, before) : null;
+  const message = `已记：${quickLabel(q)}${crossing ? `\n${crossing.text}` : ''}`;
+  showToast(message, crossing ? crossing.level : '', {
+    label: '撤销',
+    onClick() {
+      data.transactions = data.transactions.filter((t) => t.id !== tx.id);
+      saveData();
+      renderCurrentPage();
+      showToast('已撤销');
+    },
+  });
+}
+
+function openQuickManage() {
+  const renderList = () => {
+    const items = data.quickItems || [];
+    $('qm-list').innerHTML = items.length ? items.map((q) => `
+      <div class="history-row">
+        <span class="h-main">${escapeHtml(quickLabel(q))}<div class="h-date">${q.type === 'income' ? '收入' : '支出'} · ${escapeHtml(findAccount(q.accountId)?.name || '账户已删除')}</div></span>
+        <button type="button" class="h-del" data-quick-del="${q.id}" aria-label="删除这个快捷按钮" title="删除">✕</button>
+      </div>`).join('') : '<p class="chart-empty">没有快捷按钮了</p>';
+  };
+  openEditor({
+    title: '⚡ 管理快捷按钮',
+    withNameIcon: false,
+    submitLabel: '完成',
+    extraHtml: `<div id="qm-list"></div>
+      <p class="field-hint">想添加新的：点「记一笔」，填好后点「⚡ 同时存为快捷按钮」再保存。</p>`,
+    onSave() { return ''; },
+  });
+  renderList();
+  $('qm-list').addEventListener('click', (e) => {
+    const del = e.target.closest('[data-quick-del]');
+    if (!del) return;
+    data.quickItems = data.quickItems.filter((q) => q.id !== del.dataset.quickDel);
+    saveData();
+    renderList();
+    renderQuickChips();
+  });
 }
 
 /* ---------- 账户页 ---------- */
@@ -598,6 +716,14 @@ function validateBackup(obj) {
       && Number.isInteger(g.target) && g.target > 0 && Array.isArray(g.deposits)
       && g.deposits.every((x) => x && Number.isInteger(x.amount) && /^\d{4}-\d{2}-\d{2}$/.test(x.date));
     if (!Array.isArray(d.goals) || !d.goals.every(okGoal)) bad('备份里的存钱目标数据有问题');
+  }
+  if (d.quickItems !== undefined) {
+    const okQuick = (q) => q && typeof q.id === 'string' && ['expense', 'income'].includes(q.type)
+      && Number.isInteger(q.amount) && q.amount > 0;
+    if (!Array.isArray(d.quickItems) || !d.quickItems.every(okQuick)) bad('备份里的快捷按钮数据有问题');
+  }
+  if (d.merchantRules !== undefined && (!d.merchantRules || typeof d.merchantRules !== 'object')) {
+    bad('备份里的商家分类数据有问题');
   }
   return d;
 }
@@ -1357,18 +1483,23 @@ function budgetInfo(categoryId, month) {
   return { budget, spent, level: budgetLevel(spent, budget) };
 }
 
-/** 记账后，如果这个分类刚刚跨过 80% 或超支，弹出醒目提醒 */
-function warnIfBudgetCrossed(categoryId, month, before) {
+/** 如果这个分类刚刚跨过 80% 或超支，返回提醒文字和级别；否则返回 null */
+function budgetCrossing(categoryId, month, before) {
   const after = budgetInfo(categoryId, month);
-  if (!after || after.level === 'ok') return;
-  if (before && LEVEL_RANK[before.level] >= LEVEL_RANK[after.level]) return;
+  if (!after || after.level === 'ok') return null;
+  if (before && LEVEL_RANK[before.level] >= LEVEL_RANK[after.level]) return null;
   const cat = findCategory(categoryId);
   const pct = Math.round((after.spent / after.budget) * 100);
   if (after.level === 'over') {
-    showToast(`🚨 「${cat.name}」超支了！\n已花 ${formatMoney(after.spent)}，超出预算 ${formatMoney(after.spent - after.budget)}`, 'over');
-  } else {
-    showToast(`⚠️ 「${cat.name}」预算已用 ${pct}%\n只剩 ${formatMoney(after.budget - after.spent)} 了`, 'warn');
+    return { level: 'over', text: `🚨 「${cat.name}」超支了！\n已花 ${formatMoney(after.spent)}，超出预算 ${formatMoney(after.spent - after.budget)}` };
   }
+  return { level: 'warn', text: `⚠️ 「${cat.name}」预算已用 ${pct}%\n只剩 ${formatMoney(after.budget - after.spent)} 了` };
+}
+
+/** 记账后，如果这个分类刚刚跨过 80% 或超支，弹出醒目提醒 */
+function warnIfBudgetCrossed(categoryId, month, before) {
+  const crossing = budgetCrossing(categoryId, month, before);
+  if (crossing) showToast(crossing.text, crossing.level);
 }
 
 /** 某月所有设了预算的分类，按紧急程度排序 */
@@ -1517,6 +1648,7 @@ function openEditor({
   extraHtml = '', onSave, onDelete, deleteLabel = '删除', submitLabel = '保存',
 }) {
   $('edit-submit').textContent = submitLabel;
+  $('edit-submit').disabled = false;
   editor = { onSave, onDelete, icon, withNameIcon };
   $('edit-title').textContent = title;
   $('edit-body').innerHTML = (withNameIcon ? `
@@ -1683,6 +1815,24 @@ function bindEvents() {
   window.addEventListener('resize', () => {
     clearTimeout(resizeTimer);
     resizeTimer = setTimeout(() => { if (currentPage === 'charts') renderTrend(); }, 150);
+  });
+
+  // 快捷记账、导入银行账单
+  $('quick-chips').addEventListener('click', (e) => {
+    if (e.target.closest('#quick-manage')) { openQuickManage(); return; }
+    const chip = e.target.closest('[data-quick]');
+    const q = chip && (data.quickItems || []).find((x) => x.id === chip.dataset.quick);
+    if (q) quickAdd(q);
+  });
+  $('f-save-quick').addEventListener('click', () => {
+    form.saveQuick = !form.saveQuick;
+    renderFormChoices();
+  });
+  $('bank-import-btn').addEventListener('click', () => $('bank-file').click());
+  $('bank-file').addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    e.target.value = ''; // 清空，这样同一个文件可以再选一次
+    if (file) openBankImport(file);
   });
 
   // 理财助手
